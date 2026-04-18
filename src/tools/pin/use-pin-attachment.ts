@@ -20,18 +20,6 @@ export interface ShapeSnapshot {
 
 export type ShapeMove = ShapeSnapshot
 
-// Module-level propagation guard. Lives outside React so it survives hook
-// remounts and stays shared across any concurrent handler invocations inside
-// a single editor batch.
-//
-// A plain boolean isn't enough: tldraw's flushAtomicCallbacks while-loop
-// processes each round of pendingAfterEvents in a new iteration, resetting
-// handler context between rounds. When shapeA moves and we propagate shapeB,
-// shapeB's afterChange fires in the *next* iteration with the boolean already
-// reset to false, triggering another cascade. Tracking each propagated ID
-// explicitly lets us skip exactly those shapes in subsequent iterations.
-const propagatedIds = new Set<TLShapeId>()
-
 // Pure helper so we can unit-test the delta math without mounting tldraw.
 // Returns the list of shape/pin moves triggered by `movedShapeId` shifting by
 // (dx, dy). The moved shape itself is not included — the caller has already
@@ -96,6 +84,14 @@ export function usePinAttachment(editor: Editor | null) {
   useEffect(() => {
     if (!editor) return
 
+    // Per-editor propagation guard. A plain boolean isn't enough: tldraw's
+    // flushAtomicCallbacks while-loop processes each round of pendingAfterEvents
+    // in a new iteration, resetting handler context between rounds. When shapeA
+    // moves and we propagate shapeB, shapeB's afterChange fires in the *next*
+    // iteration with the boolean already reset, triggering another cascade.
+    // Tracking each propagated ID lets us skip exactly those shapes later.
+    const propagatedIds = new Set<TLShapeId>()
+
     const disposeChange = editor.sideEffects.registerAfterChangeHandler(
       "shape",
       (prev, next) => {
@@ -105,6 +101,15 @@ export function usePinAttachment(editor: Editor | null) {
         }
         if (next.type === "pin") return
         if (next.x === prev.x && next.y === prev.y) return
+
+        // Skip resizes. Dragging a top/left handle also changes x/y (alongside
+        // w/h in props), and we don't want to drag attached shapes along on
+        // resize — only on pure translate.
+        const prevW = (prev.props as { w?: number }).w
+        const prevH = (prev.props as { h?: number }).h
+        const nextW = (next.props as { w?: number }).w
+        const nextH = (next.props as { h?: number }).h
+        if (prevW !== nextW || prevH !== nextH) return
 
         const pins = snapshotPins(editor)
         if (pins.length === 0) return
@@ -146,6 +151,7 @@ export function usePinAttachment(editor: Editor | null) {
         )
         if (pins.length === 0) return
 
+        editor.markHistoryStoppingPoint("pin attachment cascade")
         editor.run(() => {
           const pinsToDelete: TLShapeId[] = []
           const pinsToUpdate: Array<{

@@ -10,7 +10,21 @@
 
 ## Task 3 — Pin Tool
 
-Implemented in Phase 5 (PR #6). See `src/tools/pin/`.
+**Pin icon: 📍 emoji.** The shape and the toolbar button both render the emoji — not the lucide `MapPin` SVG the spec suggested. The emoji is recognisably a pushpin on every major OS without shipping an SVG, tracks OS font updates automatically, and the red/gold colors survive unchanged (tldraw's default icon pipeline renders icons via CSS `mask-image`, which would strip the emoji's color and fall back to a monochrome silhouette). Trade-off: the glyph is platform-specific — Apple's pushpin looks different from Microsoft's — but for a coding exercise the cross-platform consistency gain outweighs that. The toolbar button uses `TldrawUiButton` directly rather than `TldrawUiMenuItem` so the emoji renders as text instead of being masked.
+
+**Side-effects over React effects.** Attachment propagation is wired via `editor.sideEffects.registerAfterChangeHandler('shape', ...)` inside a `useEffect`. This survives undo/redo cleanly and doesn't re-run on React render cycles.
+
+**Per-editor propagation guard.** A `Set<TLShapeId>` scoped to the effect closure tracks which shapes we've already propagated during an atomic flush. A plain boolean isn't enough: tldraw's `flushAtomicCallbacks` while-loop resets handler context between rounds, so shape B's afterChange fires in the next iteration with the boolean already cleared and triggers another cascade. Tracking each propagated ID explicitly lets us skip exactly those shapes.
+
+**Resize guard.** The afterChange handler skips when `props.w` or `props.h` changed. Dragging a top/left resize handle also updates `x`/`y`, which would otherwise be indistinguishable from a translate and drag every attached shape along by the corner delta.
+
+**Orphaned pins are deleted.** When the deleted-shape handler drops a pin's attached set below 2, the pin itself is deleted. Orphaned pins are visual clutter — without 2+ attached shapes they don't do anything, and keeping them would need a separate "ghost" visual to communicate that. Opted for the simpler rule.
+
+**Attach all overlapping shapes, not just the top 2.** `getShapesAtPoint(point, { hitInside: true })` returns every non-pin shape under the pointer; all of them go into `attachedShapeIds`. Spec §9 flags this as an open question, and "all" is the more useful default — if a user wants a 3-shape group to move together, pinning the stack once should suffice. They can always delete the pin and re-drop with fewer shapes beneath.
+
+**`hitInside: true` side effect: pins attach to the PDF page.** Because PDF pages are rendered as tldraw image shapes, `getShapesAtPoint({ hitInside: true })` returns them alongside user-drawn shapes, so every in-bounds pin drop attaches to at least the page image. That matches the "pin on empty canvas" behavior in the video (a lone pin sitting on the PDF) and doesn't cause grouping issues since PDF pages aren't draggable in practice.
+
+**O(n) `snapshotPins` per change.** `snapshotPins` walks every shape on the page on every afterChange tick — fine for this exercise (decks of a few dozen shapes), but a pin index maintained via a dedicated `editor.store.listen` filter on pin records would scale better if the shape count grew.
 
 ## Task 4 — Camera Tool
 

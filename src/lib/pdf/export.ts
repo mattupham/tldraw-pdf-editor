@@ -11,7 +11,11 @@ export async function exportPdf(bytes: Uint8Array): Promise<Blob> {
     const pngBytes = new Uint8Array((await blob.arrayBuffer()) as ArrayBuffer)
     const img = await doc.embedPng(pngBytes)
     const dims = layout[i]
-    if (!dims) continue
+    if (!dims) {
+      throw new Error(
+        `Missing layout for page ${i + 1} of ${src.numPages} — layout/page count diverged`
+      )
+    }
     const page = doc.addPage([dims.w, dims.h])
     page.drawImage(img, { x: 0, y: 0, width: dims.w, height: dims.h })
   }

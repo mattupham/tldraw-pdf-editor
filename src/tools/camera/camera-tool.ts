@@ -1,6 +1,9 @@
+import { toast } from "sonner"
 import { Box, StateNode, atom } from "tldraw"
 import type { TLKeyboardEventInfo, TLPointerEventInfo } from "tldraw"
 import { exportCropImage } from "./export-image"
+
+const MIN_CROP_SIZE = 8
 
 type CropState =
   | { status: "idle" }
@@ -56,14 +59,24 @@ export class CameraTool extends StateNode {
     const w = Math.abs(currentX - startX)
     const h = Math.abs(currentY - startY)
 
-    if (w > 8 && h > 8) {
+    if (w > MIN_CROP_SIZE && h > MIN_CROP_SIZE) {
       const bounds = Box.FromPoints([
         { x: startX, y: startY },
         { x: currentX, y: currentY },
       ])
       exportCropImage(this.editor, bounds)
+      this.editor.setCurrentTool("select")
+      return
     }
 
+    // A deliberate (non-zero) drag that fell below the threshold — nudge the
+    // user and stay on the camera tool so they can retry without reactivating.
+    if (w > 1 || h > 1) {
+      toast.info("Crop too small — drag a larger area to export")
+      return
+    }
+
+    // Zero-drag click: treat as a cancel and return to select.
     this.editor.setCurrentTool("select")
   }
 

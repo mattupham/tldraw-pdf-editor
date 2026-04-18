@@ -11,10 +11,9 @@ import {
   DefaultToolbarContent,
   type Editor,
   type TLComponents,
-  type TLUiAssetUrlOverrides,
   type TLUiOverrides,
   Tldraw,
-  TldrawUiMenuItem,
+  TldrawUiButton,
   useIsToolSelected,
   useTools,
 } from "tldraw"
@@ -28,28 +27,14 @@ export function useEditor(): Editor | null {
 const customShapeUtils = [PinShapeUtil]
 const customTools = [PinTool, CameraTool]
 
-const PIN_ICON_ID = "pin-tool-icon"
-
-// Inline SVG of the lucide `MapPin` icon (lucide-react v1.8.0, see
-// node_modules/lucide-react/dist/esm/icons/map-pin.js), served as a data URL
-// through tldraw's `assetUrls.icons` pipeline. tldraw renders toolbar icons as
-// CSS masks, so the icon must come in as a single URL — rendering `<MapPin />`
-// as JSX would bypass that and lose the active-tool highlight styling. When
-// lucide publishes an updated MapPin, refresh the path data below.
-const assetUrls: TLUiAssetUrlOverrides = {
-  icons: {
-    [PIN_ICON_ID]: `data:image/svg+xml;utf8,${encodeURIComponent(
-      '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 10c0 4.993-5.539 10.193-7.399 11.799a1 1 0 0 1-1.202 0C9.539 20.193 4 14.993 4 10a8 8 0 0 1 16 0"/><circle cx="12" cy="10" r="3"/></svg>'
-    )}`,
-  },
-}
-
 const uiOverrides: TLUiOverrides = {
   tools(editor, tools) {
     tools.pin = {
       id: "pin",
       label: "Pin",
-      icon: PIN_ICON_ID,
+      // tldraw requires a string here; we render our own button below so the
+      // value is only used in keyboard-shortcut help listings.
+      icon: "pin",
       kbd: "p",
       onSelect: () => editor.setCurrentTool("pin"),
     }
@@ -57,12 +42,31 @@ const uiOverrides: TLUiOverrides = {
   },
 }
 
+// Custom toolbar button renders the 📍 emoji directly — tldraw's default icon
+// pipeline uses CSS `mask-image`, which would strip the emoji's color and fall
+// back to a silhouette. Using `TldrawUiButton` keeps the native tool-button
+// styling and keyboard behavior.
 function PinToolbarItem() {
   const tools = useTools()
   const pin = tools.pin
   const isSelected = useIsToolSelected(pin)
   if (!pin) return null
-  return <TldrawUiMenuItem {...pin} isSelected={isSelected} />
+  return (
+    <TldrawUiButton
+      type="tool"
+      isActive={isSelected}
+      aria-label={pin.label}
+      title={pin.label}
+      onClick={() => pin.onSelect("toolbar")}
+    >
+      <span
+        aria-hidden="true"
+        style={{ fontSize: 16, lineHeight: 1, display: "inline-block" }}
+      >
+        📍
+      </span>
+    </TldrawUiButton>
+  )
 }
 
 const components: TLComponents = {
@@ -106,7 +110,6 @@ export default function Canvas({
           tools={customTools}
           overrides={uiOverrides}
           components={components}
-          assetUrls={assetUrls}
         />
       </div>
       <AttachmentBridge />
