@@ -11,6 +11,7 @@
     "format": "biome format --write .",
     "check": "biome check --write .",
     "typecheck": "tsc --noEmit",
+    "test": "vitest run",
     "postinstall": "cp node_modules/pdfjs-dist/build/pdf.worker.min.mjs public/",
     "prepare": "husky"
   },
@@ -42,7 +43,8 @@
     "lint-staged": "^15.5.1",
     "postcss": "^8",
     "tailwindcss": "^4.2.1",
-    "typescript": "^5.9.3"
+    "typescript": "^5.9.3",
+    "vitest": "^3.2.4"
   },
   "lint-staged": {
     "*.{ts,tsx,js,jsx,json}": "biome check --write --no-errors-on-unmatched"
