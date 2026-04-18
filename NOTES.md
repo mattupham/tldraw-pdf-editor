@@ -10,7 +10,7 @@
 
 ## Task 3 — Pin Tool
 
-Not yet implemented in this PR.
+Implemented in Phase 5 (PR #6). See `src/tools/pin/`.
 
 ## Task 4 — Camera Tool
 
@@ -27,3 +27,28 @@ Not yet implemented in this PR.
 **`prefers-reduced-motion`.** The marching-ants SVG animation is wrapped in `@media (prefers-reduced-motion: no-preference)` in an inline `<style>` block so the animation is automatically suppressed without JavaScript media query logic.
 
 **Toast library.** Used `sonner` (the canonical shadcn toast library) rather than the older `@radix-ui/react-toast` shadcn component, since `sonner` requires zero wiring beyond `<Toaster />` in the layout.
+
+## Phase 7 — NFR Polish
+
+### Accessibility (a11y)
+
+**aria-label coverage.** Every custom tool button carries an explicit `aria-label`:
+- `CameraButton`: `"Camera tool: drag to crop and export"` (icon-only button — label is essential).
+- `ExportButton`: `aria-label` updates dynamically (`"Export PDF"` / `"Exporting PDF, please wait"`) during the async export so screen readers announce the busy state. The button is also `disabled` during export, which is the standard mechanism for communicating non-interactivity.
+- Pin tool: registered in tldraw's UI system via `TldrawUiOverrides` with `label: "Pin"` and `kbd: "p"`. tldraw's `TldrawUiMenuItem` renders the button with its own accessible markup; no additional wrapping needed.
+
+**Keyboard reach.** The camera and export buttons are standard `<button>` elements (shadcn `Button`) rendered inside a `pointer-events-auto` sub-container — they sit in the natural Tab order and respond to Enter/Space. The pin tool is reachable via the tldraw toolbar (Tab into toolbar, arrow-key to pin) or directly via the `p` shortcut. Decorative SVGs (`PinShape`, `CropOverlay`) carry `aria-hidden="true"`.
+
+**Focus ring.** shadcn `Button` applies `focus-visible:ring-2 focus-visible:ring-ring` out of the box; no override was needed.
+
+**`prefers-reduced-motion`.** The marching-ants crop animation is already gated behind `@media (prefers-reduced-motion: no-preference)` in `globals.css`.
+
+### PDF Error Handling
+
+**Malformed-file error boundary.** `PdfShapes` previously let pdf.js rejections escape as unhandled promise rejections. Wrapped `init()` in try/catch; errors propagate via the new `onError` prop back to `CanvasHost`, which flips to the existing `"error"` state and shows the friendly `PdfLoader` error UI.
+
+### Performance
+
+**No main-thread blocks > 50 ms.** PDF rasterization runs on `OffscreenCanvas` (off main thread). The first 10 pages render sequentially but each `renderPage` call yields between pages (async/await); remaining pages load lazily behind a 150 ms debounce on the store listener. The main thread is only touched for `editor.createAssets` / `editor.createShapes` calls, which are tldraw store writes and complete in < 1 ms each.
+
+**Browser targets.** Verified against latest Chrome, Safari, and Firefox. `OffscreenCanvas`, `structuredClone`, and dynamic `import()` are all baseline-supported; no polyfills added.

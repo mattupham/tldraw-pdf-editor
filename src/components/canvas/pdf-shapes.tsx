@@ -8,7 +8,7 @@ import {
   renderPage,
 } from "@/lib/pdf/render"
 import type { PDFDocumentProxy } from "pdfjs-dist"
-import { useEffect } from "react"
+import { useEffect, useRef } from "react"
 import { AssetRecordType, createShapeId } from "tldraw"
 import type { Editor } from "tldraw"
 
@@ -16,6 +16,7 @@ const INITIAL_PAGES = 10
 
 interface PdfShapesProps {
   bytes: Uint8Array
+  onError?: (message: string) => void
 }
 
 async function createPageShape(
@@ -55,8 +56,10 @@ async function createPageShape(
   ])
 }
 
-export function PdfShapes({ bytes }: PdfShapesProps) {
+export function PdfShapes({ bytes, onError }: PdfShapesProps) {
   const editor = useEditor()
+  const onErrorRef = useRef(onError)
+  onErrorRef.current = onError
 
   useEffect(() => {
     if (!editor) return
@@ -80,44 +83,60 @@ export function PdfShapes({ bytes }: PdfShapesProps) {
     }
 
     async function init() {
-      pdf = await openPdf(bytes)
-      if (aborted) return
-
-      layout = await getPageLayout(pdf)
-      if (aborted) return
-
-      const initialCount = Math.min(INITIAL_PAGES, pdf.numPages)
-      for (let i = 0; i < initialCount; i++) {
-        await renderAndCreate(i)
+      try {
+        pdf = await openPdf(bytes)
         if (aborted) return
-      }
 
-      ed.zoomToFit({ animation: { duration: 0 } })
+        layout = await getPageLayout(pdf)
+        if (aborted) return
 
-      if (pdf.numPages <= INITIAL_PAGES) return
-
-      let debounceTimer: ReturnType<typeof setTimeout> | null = null
-
-      unsubscribe = ed.store.listen(() => {
-        if (debounceTimer) clearTimeout(debounceTimer)
-        debounceTimer = setTimeout(() => {
+        const initialCount = Math.min(INITIAL_PAGES, pdf.numPages)
+        for (let i = 0; i < initialCount; i++) {
+          await renderAndCreate(i)
           if (aborted) return
-          const vp = ed.getViewportPageBounds()
-          for (let i = INITIAL_PAGES; i < layout.length; i++) {
-            if (renderedPages.has(i)) continue
-            const page = layout[i]
-            if (!page) continue
-            if (
-              page.x < vp.maxX &&
-              page.x + page.w > vp.minX &&
-              page.y < vp.maxY &&
-              page.y + page.h > vp.minY
-            ) {
-              renderAndCreate(i)
+        }
+
+        ed.zoomToFit({ animation: { duration: 0 } })
+
+        if (pdf.numPages <= INITIAL_PAGES) return
+
+        let debounceTimer: ReturnType<typeof setTimeout> | null = null
+
+        unsubscribe = ed.store.listen(() => {
+          if (debounceTimer) clearTimeout(debounceTimer)
+          debounceTimer = setTimeout(() => {
+            if (aborted) return
+            const vp = ed.getViewportPageBounds()
+            for (let i = INITIAL_PAGES; i < layout.length; i++) {
+              if (renderedPages.has(i)) continue
+              const page = layout[i]
+              if (!page) continue
+              if (
+                page.x < vp.maxX &&
+                page.x + page.w > vp.minX &&
+                page.y < vp.maxY &&
+                page.y + page.h > vp.minY
+              ) {
+                renderAndCreate(i).catch((err) => {
+                  if (!aborted) {
+                    onErrorRef.current?.(
+                      err instanceof Error
+                        ? err.message
+                        : "Failed to render page."
+                    )
+                  }
+                })
+              }
             }
-          }
-        }, 150)
-      })
+          }, 150)
+        })
+      } catch (err) {
+        if (!aborted) {
+          onErrorRef.current?.(
+            err instanceof Error ? err.message : "Failed to render PDF."
+          )
+        }
+      }
     }
 
     init()
