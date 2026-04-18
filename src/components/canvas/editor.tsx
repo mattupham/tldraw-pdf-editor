@@ -92,9 +92,11 @@ export default function Canvas({
 
   function handleMount(e: Editor) {
     setEditor(e)
-    // Test hook — lets E2E specs call editor APIs via window.__editor
-    // @ts-expect-error test-only
-    window.__editor = e
+    if (process.env.NODE_ENV !== "production") {
+      // Test hook — lets E2E specs call editor APIs via window.__editor
+      // @ts-expect-error test-only
+      window.__editor = e
+    }
   }
 
   return (

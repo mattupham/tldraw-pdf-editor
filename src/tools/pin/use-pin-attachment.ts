@@ -123,16 +123,21 @@ export function usePinAttachment(editor: Editor | null) {
         for (const update of updates) {
           propagatedIds.add(update.id)
         }
-        editor.run(() => {
-          editor.updateShapes(
-            updates.map((u) => ({
-              id: u.id,
-              type: u.type,
-              x: u.x,
-              y: u.y,
-            }))
-          )
-        })
+        try {
+          editor.run(() => {
+            editor.updateShapes(
+              updates.map((u) => ({
+                id: u.id,
+                type: u.type,
+                x: u.x,
+                y: u.y,
+              }))
+            )
+          })
+        } catch (err) {
+          for (const update of updates) propagatedIds.delete(update.id)
+          throw err
+        }
       }
     )
 

@@ -12,7 +12,7 @@ test("Use an example mounts canvas with PDF page shapes", async ({ page }) => {
       if (!e) return false
       return e.getCurrentPageShapes().length > 0
     },
-    { timeout: 25_000 }
+    { timeout: 20_000 }
   )
 
   const count = await page.evaluate(() => {
