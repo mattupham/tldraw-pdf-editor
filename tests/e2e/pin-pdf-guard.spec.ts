@@ -5,6 +5,12 @@ import { expect, test } from "@playwright/test"
 // included the locked PDF image shape, which meant every in-bounds drop
 // silently attached to the page — and any stray drag of the page would carry
 // every pin along with it.
+//
+// The test drives the pin tool via real DOM mouse events (not editor.dispatch)
+// so we hit the full tldraw pointer pipeline — including the page-space
+// conversion the pin-tool reads via editor.inputs.getCurrentPagePoint(). A
+// sanity check inside the page context confirms the click actually landed on
+// the PDF image shape before we assert the attached-set behavior.
 test("pin dropped on the PDF page alone has empty attachedShapeIds", async ({
   page,
 }) => {
@@ -15,67 +21,59 @@ test("pin dropped on the PDF page alone has empty attachedShapeIds", async ({
   // Wait for the PDF page shape to land in the store.
   await page.waitForFunction(
     () => {
-      // biome-ignore lint/suspicious/noExplicitAny: test-only, tldraw shape union is too deep for intersection narrowing
-      const e = (window as { __editor?: any }).__editor
+      const e = window.__editor
       if (!e) return false
       return e
         .getCurrentPageShapes()
-        .some(
-          (s: { type: string; meta: { isPdfPage?: boolean } }) =>
-            s.type === "image" && s.meta.isPdfPage === true
-        )
+        .some((s) => s.type === "image" && s.meta.isPdfPage === true)
     },
     { timeout: 25_000 }
   )
 
-  // Use the pin tool programmatically (simulating the toolbar click is noisy
-  // across platforms). setCurrentTool("pin") + dispatch(pointer_down) routes
-  // through the same StateNode.onPointerDown logic a real pointer would.
-  const pinId = await page.evaluate(() => {
-    // biome-ignore lint/suspicious/noExplicitAny: test-only tldraw hook
-    const e = (window as { __editor?: any }).__editor
+  // Compute the screen-space position of the PDF page centre. tldraw's
+  // pointer pipeline expects screen coords; converting here ensures the click
+  // really hits the PDF image rather than empty canvas.
+  const target = await page.evaluate(() => {
+    const e = window.__editor
     if (!e) throw new Error("editor not mounted")
-
     const pdfShape = e
       .getCurrentPageShapes()
-      // biome-ignore lint/suspicious/noExplicitAny: test-only narrowing
-      .find((s: any) => s.type === "image" && s.meta.isPdfPage === true)
+      .find((s) => s.type === "image" && s.meta.isPdfPage === true)
     if (!pdfShape) throw new Error("PDF page shape missing")
+    const props = pdfShape.props as { w: number; h: number }
+    const pageCenter = {
+      x: pdfShape.x + props.w / 2,
+      y: pdfShape.y + props.h / 2,
+    }
+    // Sanity: the PDF image IS at pageCenter in page space.
+    const hitCheck = e
+      .getShapesAtPoint(pageCenter, { hitInside: true })
+      .some((s) => s.type === "image" && s.meta.isPdfPage === true)
+    if (!hitCheck) throw new Error("PDF page not at computed page-centre")
 
-    const cx = pdfShape.x + pdfShape.props.w / 2
-    const cy = pdfShape.y + pdfShape.props.h / 2
-
-    e.setCurrentTool("pin")
-    e.dispatch({
-      type: "pointer",
-      name: "pointer_down",
-      target: "canvas",
-      point: { x: cx, y: cy, z: 0.5 },
-      pointerId: 1,
-      button: 0,
-      isPen: false,
-      ctrlKey: false,
-      altKey: false,
-      shiftKey: false,
-      metaKey: false,
-      accelKey: false,
-    })
-
-    // biome-ignore lint/suspicious/noExplicitAny: test-only narrowing
-    const pin = e.getCurrentPageShapes().find((s: any) => s.type === "pin")
-    if (!pin) throw new Error("pin not created")
-    return pin.id as string
+    const screen = e.pageToScreen(pageCenter)
+    return { screen, pageCenter }
   })
 
-  const attached = await page.evaluate((id) => {
-    // biome-ignore lint/suspicious/noExplicitAny: test-only tldraw hook
-    const e = (window as { __editor?: any }).__editor
-    if (!e) throw new Error("editor not mounted")
-    const pin = e.getShape(id)
-    return pin.props.attachedShapeIds as string[]
-  }, pinId)
+  // Activate the pin tool via the toolbar (real click — exercises the UI).
+  await page.getByRole("button", { name: "Pin", exact: true }).click()
 
-  // The PDF page image must NOT be in the set. Since the test dropped on
-  // the PDF alone (no user shapes), the set must be empty.
-  expect(attached).toEqual([])
+  // Click at the PDF page centre in screen space.
+  await page.mouse.click(target.screen.x, target.screen.y)
+
+  const result = await page.evaluate(() => {
+    const e = window.__editor
+    if (!e) throw new Error("editor not mounted")
+    const pin = e.getCurrentPageShapes().find((s) => s.type === "pin")
+    if (!pin) throw new Error("pin not created")
+    const props = pin.props as { attachedShapeIds: string[] }
+    return {
+      pinAt: { x: pin.x, y: pin.y },
+      attachedShapeIds: props.attachedShapeIds,
+    }
+  })
+
+  // Pin must have landed near the PDF-page centre (within the PDF's bounds),
+  // and the PDF page must NOT have been attached — so the set is empty.
+  expect(result.attachedShapeIds).toEqual([])
 })

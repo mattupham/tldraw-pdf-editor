@@ -132,14 +132,14 @@ export function PdfShapes({ bytes, onError }: PdfShapesProps) {
 
     const ed = editor
     let aborted = false
-    let pdf: PDFDocumentProxy
+    let pdf: PDFDocumentProxy | undefined
     let disposeViewportReaction: (() => void) | undefined
     let debounceTimer: ReturnType<typeof setTimeout> | null = null
     const renderedPages = new Set<number>()
     let layout: PageDimensions[] = []
 
     async function renderAndCreate(pageIndex: number) {
-      if (aborted || renderedPages.has(pageIndex)) return
+      if (aborted || renderedPages.has(pageIndex) || !pdf) return
       const dims = layout[pageIndex]
       if (!dims) return
       renderedPages.add(pageIndex)
@@ -222,6 +222,11 @@ export function PdfShapes({ bytes, onError }: PdfShapesProps) {
       aborted = true
       disposeViewportReaction?.()
       if (debounceTimer) clearTimeout(debounceTimer)
+      // Tear down the pdfjs worker. Cancels any in-flight render tasks and
+      // releases the Web Worker backing the document. Without this, swapping
+      // PDFs (or unmounting mid-render) leaks a worker thread per load.
+      // destroy() can reject if a render is in-flight; we don't await it.
+      pdf?.destroy().catch(() => {})
     }
   }, [editor, bytes])
 
