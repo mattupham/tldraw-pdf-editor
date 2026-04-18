@@ -29,5 +29,6 @@ This is a Next.js 16 App Router template wired to shadcn/ui. It is intentionally
 ## Code style
 
 - **Biome**: no semicolons, double quotes, 2-space indentation, `trailingCommas: es5`, `lineWidth: 80`, `lineEnding: lf`. Configured in `biome.json`.
+- Biome has no Tailwind class sorter — sort classes manually when adding new ones.
 - TypeScript `strict` is on, `noUncheckedIndexedAccess: true`.
-- Pre-commit hook (husky + lint-staged) runs `biome check --write --no-errors-on-unmatched --staged` on staged files.
+- Pre-commit hook (husky + lint-staged) runs `biome check --write --no-errors-on-unmatched` on staged files (lint-staged handles file selection).

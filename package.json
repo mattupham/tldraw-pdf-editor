@@ -39,6 +39,6 @@
     "typescript": "^5.9.3"
   },
   "lint-staged": {
-    "*.{ts,tsx,js,jsx,json}": "biome check --write --no-errors-on-unmatched --staged"
+    "*.{ts,tsx,js,jsx,json}": "biome check --write --no-errors-on-unmatched"
   }
 }
