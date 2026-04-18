@@ -27,7 +27,10 @@ const GUTTER = 20
 export async function openPdf(bytes: Uint8Array): Promise<PDFDocumentProxy> {
   await ensureWorker()
   const { getDocument } = await pdfjs()
-  return getDocument({ data: bytes }).promise
+  // pdfjs transfers ownership of the backing ArrayBuffer to its worker, which
+  // detaches the original. Clone here so repeat callers (e.g. Export PDF after
+  // the initial render) don't hit "ArrayBuffer is already detached".
+  return getDocument({ data: new Uint8Array(bytes) }).promise
 }
 
 export async function getPageLayout(

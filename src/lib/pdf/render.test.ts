@@ -1,5 +1,10 @@
 import { describe, expect, it, vi } from "vitest"
 
+// Capture the data passed to getDocument so we can assert openPdf cloned it.
+const { getDocumentCalls } = vi.hoisted(() => ({
+  getDocumentCalls: [] as Array<{ data: Uint8Array }>,
+}))
+
 // Mock pdfjs-dist before it is dynamically imported inside render.ts.
 // This avoids DOMMatrix and other browser globals that crash in node.
 vi.mock("pdfjs-dist", () => {
@@ -9,12 +14,15 @@ vi.mock("pdfjs-dist", () => {
   }
   return {
     GlobalWorkerOptions: { workerSrc: "" },
-    getDocument: () => ({
-      promise: Promise.resolve({
-        numPages: 3,
-        getPage: () => Promise.resolve(mockPage),
-      }),
-    }),
+    getDocument: (args: { data: Uint8Array }) => {
+      getDocumentCalls.push(args)
+      return {
+        promise: Promise.resolve({
+          numPages: 3,
+          getPage: () => Promise.resolve(mockPage),
+        }),
+      }
+    },
   }
 })
 
@@ -38,6 +46,23 @@ vi.stubGlobal(
 
 // Import after mocks are in place
 const { openPdf, renderPage } = await import("./render")
+
+describe("openPdf", () => {
+  it("passes a cloned Uint8Array to pdfjs, preserving the caller's buffer", async () => {
+    const before = getDocumentCalls.length
+    const input = new Uint8Array([37, 80, 68, 70]) // '%PDF'
+
+    await openPdf(input)
+
+    const call = getDocumentCalls[before]
+    expect(call).toBeDefined()
+    // pdfjs transfers and detaches the ArrayBuffer it receives, so openPdf
+    // must hand it a fresh copy — not the caller's view.
+    expect(call?.data).not.toBe(input)
+    expect(call?.data.buffer).not.toBe(input.buffer)
+    expect(Array.from(call?.data ?? [])).toEqual([37, 80, 68, 70])
+  })
+})
 
 describe("renderPage", () => {
   it("returns a Blob for every page in a multi-page PDF fixture", async () => {

@@ -26,7 +26,7 @@ export type ShapeMove = ShapeSnapshot
 // applied that move. Each affected shape (and pin) is emitted once, even when
 // several pins' attached sets overlap.
 export function computePinUpdates(
-  pins: readonly PinSnapshot[],
+  pins: Iterable<PinSnapshot>,
   movedShapeId: TLShapeId,
   dx: number,
   dy: number,
@@ -65,19 +65,13 @@ export function computePinUpdates(
   return updates
 }
 
-function snapshotPins(editor: Editor): PinSnapshot[] {
-  const result: PinSnapshot[] = []
-  for (const shape of editor.getCurrentPageShapes()) {
-    if (shape.type !== "pin") continue
-    const pin = shape as TLPinShape
-    result.push({
-      id: pin.id,
-      x: pin.x,
-      y: pin.y,
-      attachedShapeIds: pin.props.attachedShapeIds,
-    })
+function snapshotOfPin(shape: TLPinShape): PinSnapshot {
+  return {
+    id: shape.id,
+    x: shape.x,
+    y: shape.y,
+    attachedShapeIds: shape.props.attachedShapeIds,
   }
-  return result
 }
 
 export function usePinAttachment(editor: Editor | null) {
@@ -92,14 +86,38 @@ export function usePinAttachment(editor: Editor | null) {
     // Tracking each propagated ID lets us skip exactly those shapes later.
     const propagatedIds = new Set<TLShapeId>()
 
+    // Pin index kept in sync via sideEffects. Avoids walking every shape on
+    // the page (O(shapes)) on every shape afterChange during a drag; lookup
+    // now scales with the number of pins, not total shapes on the canvas.
+    const pinIndex = new Map<TLShapeId, PinSnapshot>()
+    for (const shape of editor.getCurrentPageShapes()) {
+      if (shape.type === "pin") {
+        pinIndex.set(shape.id, snapshotOfPin(shape as TLPinShape))
+      }
+    }
+
+    const disposeCreate = editor.sideEffects.registerAfterCreateHandler(
+      "shape",
+      (created) => {
+        if (created.type !== "pin") return
+        pinIndex.set(created.id, snapshotOfPin(created as TLPinShape))
+      }
+    )
+
     const disposeChange = editor.sideEffects.registerAfterChangeHandler(
       "shape",
       (prev, next) => {
+        // Keep the pin index in sync on any pin change (including moves we
+        // propagate ourselves — the index needs to reflect new positions).
+        if (next.type === "pin") {
+          pinIndex.set(next.id, snapshotOfPin(next as TLPinShape))
+          return
+        }
+
         if (propagatedIds.has(next.id)) {
           propagatedIds.delete(next.id)
           return
         }
-        if (next.type === "pin") return
         if (next.x === prev.x && next.y === prev.y) return
 
         // Skip resizes. Dragging a top/left handle also changes x/y (alongside
@@ -111,17 +129,22 @@ export function usePinAttachment(editor: Editor | null) {
         const nextH = (next.props as { h?: number }).h
         if (prevW !== nextW || prevH !== nextH) return
 
-        const pins = snapshotPins(editor)
-        if (pins.length === 0) return
+        if (pinIndex.size === 0) return
 
         const dx = next.x - prev.x
         const dy = next.y - prev.y
 
-        const updates = computePinUpdates(pins, next.id, dx, dy, (id) => {
-          const shape = editor.getShape(id)
-          if (!shape) return null
-          return { id: shape.id, type: shape.type, x: shape.x, y: shape.y }
-        })
+        const updates = computePinUpdates(
+          pinIndex.values(),
+          next.id,
+          dx,
+          dy,
+          (id) => {
+            const shape = editor.getShape(id)
+            if (!shape) return null
+            return { id: shape.id, type: shape.type, x: shape.x, y: shape.y }
+          }
+        )
 
         if (updates.length === 0) return
 
@@ -144,12 +167,16 @@ export function usePinAttachment(editor: Editor | null) {
     const disposeDelete = editor.sideEffects.registerAfterDeleteHandler(
       "shape",
       (deleted: TLShape) => {
-        if (deleted.type === "pin") return
+        if (deleted.type === "pin") {
+          pinIndex.delete(deleted.id)
+          return
+        }
 
-        const pins = snapshotPins(editor).filter((pin) =>
-          pin.attachedShapeIds.includes(deleted.id)
-        )
-        if (pins.length === 0) return
+        const affected: PinSnapshot[] = []
+        for (const pin of pinIndex.values()) {
+          if (pin.attachedShapeIds.includes(deleted.id)) affected.push(pin)
+        }
+        if (affected.length === 0) return
 
         editor.markHistoryStoppingPoint("pin attachment cascade")
         editor.run(() => {
@@ -160,7 +187,7 @@ export function usePinAttachment(editor: Editor | null) {
             props: { attachedShapeIds: TLShapeId[] }
           }> = []
 
-          for (const pin of pins) {
+          for (const pin of affected) {
             const nextIds = pin.attachedShapeIds.filter(
               (id) => id !== deleted.id
             )
@@ -186,6 +213,7 @@ export function usePinAttachment(editor: Editor | null) {
     )
 
     return () => {
+      disposeCreate()
       disposeChange()
       disposeDelete()
     }

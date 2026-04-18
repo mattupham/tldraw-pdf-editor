@@ -71,3 +71,75 @@ test("pin and attached shapes translate by the same delta", async ({
   expect(result.pin.x - 160).toBe(50)
   expect(result.pin.y - 148).toBe(30)
 })
+
+test("resizing an attached shape does not drag the pin or siblings", async ({
+  page,
+}) => {
+  await page.goto("/")
+
+  await page.getByRole("button", { name: "Use an example" }).click()
+
+  await page.waitForFunction(
+    () => !!(window as { __editor?: unknown }).__editor,
+    { timeout: 20_000 }
+  )
+
+  const ids = await page.evaluate(() => {
+    // biome-ignore lint/suspicious/noExplicitAny: test-only tldraw editor hook
+    const e = (window as { __editor?: any }).__editor
+    const ts = Date.now()
+    const idA = `shape:rz-a-${ts}`
+    const idB = `shape:rz-b-${ts}`
+    const idPin = `shape:rz-pin-${ts}`
+
+    e.createShapes([
+      { id: idA, type: "geo", x: 400, y: 400, props: { w: 200, h: 200 } },
+      { id: idB, type: "geo", x: 450, y: 450, props: { w: 200, h: 200 } },
+    ])
+    e.createShape({
+      id: idPin,
+      type: "pin",
+      x: 460,
+      y: 448,
+      props: { attachedShapeIds: [idA, idB] },
+    })
+
+    return { idA, idB, idPin }
+  })
+
+  // Resize shape A from its top-left corner: x/y decrease by 20, w/h grow by 20.
+  // Under the resize guard this should NOT propagate to B or the pin.
+  await page.evaluate(({ idA }) => {
+    // biome-ignore lint/suspicious/noExplicitAny: test-only tldraw editor hook
+    const e = (window as { __editor?: any }).__editor
+    const shape = e.getShape(idA)
+    e.run(() => {
+      e.updateShape({
+        id: idA,
+        type: "geo",
+        x: shape.x - 20,
+        y: shape.y - 20,
+        props: { w: shape.props.w + 20, h: shape.props.h + 20 },
+      })
+    })
+  }, ids)
+
+  await page.waitForTimeout(100)
+
+  const result = await page.evaluate(({ idA, idB, idPin }) => {
+    // biome-ignore lint/suspicious/noExplicitAny: test-only tldraw editor hook
+    const e = (window as { __editor?: any }).__editor
+    return {
+      a: { x: e.getShape(idA).x, y: e.getShape(idA).y },
+      b: { x: e.getShape(idB).x, y: e.getShape(idB).y },
+      pin: { x: e.getShape(idPin).x, y: e.getShape(idPin).y },
+    }
+  }, ids)
+
+  expect(result.a.x).toBe(380) // resized down/left
+  expect(result.a.y).toBe(380)
+  expect(result.b.x).toBe(450) // untouched
+  expect(result.b.y).toBe(450)
+  expect(result.pin.x).toBe(460) // untouched
+  expect(result.pin.y).toBe(448)
+})

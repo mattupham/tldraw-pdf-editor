@@ -5,6 +5,7 @@ import { CropOverlay } from "@/tools/camera/crop-overlay"
 import { PinShapeUtil } from "@/tools/pin/pin-shape-util"
 import { PinTool } from "@/tools/pin/pin-tool"
 import { usePinAttachment } from "@/tools/pin/use-pin-attachment"
+import { Camera } from "lucide-react"
 import { createContext, useContext, useState } from "react"
 import {
   DefaultToolbar,
@@ -29,23 +30,31 @@ const customTools = [PinTool, CameraTool]
 
 const uiOverrides: TLUiOverrides = {
   tools(editor, tools) {
+    // tldraw requires a string `icon` here; we render our own toolbar buttons
+    // below so the icon id is only surfaced in keyboard-shortcut help listings.
     tools.pin = {
       id: "pin",
       label: "Pin",
-      // tldraw requires a string here; we render our own button below so the
-      // value is only used in keyboard-shortcut help listings.
       icon: "pin",
       kbd: "p",
       onSelect: () => editor.setCurrentTool("pin"),
+    }
+    tools.camera = {
+      id: "camera",
+      label: "Camera",
+      icon: "camera",
+      kbd: "c",
+      onSelect: () => editor.setCurrentTool("camera"),
     }
     return tools
   },
 }
 
-// Custom toolbar button renders the 📍 emoji directly — tldraw's default icon
-// pipeline uses CSS `mask-image`, which would strip the emoji's color and fall
-// back to a silhouette. Using `TldrawUiButton` keeps the native tool-button
-// styling and keyboard behavior.
+// Custom toolbar buttons render their glyphs as children instead of going
+// through tldraw's default icon pipeline, which uses CSS `mask-image`. The
+// mask strips emoji color (leaving a silhouette) and we'd rather render the
+// emoji / lucide SVG directly. `TldrawUiButton` keeps the native tool-button
+// styling and keyboard-focus behavior.
 function PinToolbarItem() {
   const tools = useTools()
   const pin = tools.pin
@@ -69,11 +78,30 @@ function PinToolbarItem() {
   )
 }
 
+function CameraToolbarItem() {
+  const tools = useTools()
+  const camera = tools.camera
+  const isSelected = useIsToolSelected(camera)
+  if (!camera) return null
+  return (
+    <TldrawUiButton
+      type="tool"
+      isActive={isSelected}
+      aria-label={camera.label}
+      title={camera.label}
+      onClick={() => camera.onSelect("toolbar")}
+    >
+      <Camera size={16} aria-hidden="true" />
+    </TldrawUiButton>
+  )
+}
+
 const components: TLComponents = {
   InFrontOfTheCanvas: CropOverlay,
   Toolbar() {
     return (
       <DefaultToolbar>
+        <CameraToolbarItem />
         <PinToolbarItem />
         <DefaultToolbarContent />
       </DefaultToolbar>

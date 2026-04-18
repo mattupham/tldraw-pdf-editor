@@ -12,7 +12,6 @@ Built for the H2 coding exercise. See [`SPEC.md`](./SPEC.md) for the full techni
 - Next.js 16 (App Router) + React 19 + TypeScript `strict` + `noUncheckedIndexedAccess`
 - tldraw v3 — canvas, custom shapes, custom tools
 - pdfjs-dist — PDF rasterization on an `OffscreenCanvas`
-- pdf-lib — PDF export
 - shadcn/ui + Tailwind v4 — chrome buttons, toasts
 - Biome — format + lint (single tool)
 - Vitest (unit) + Playwright (E2E)
@@ -48,13 +47,13 @@ pnpm dev        # http://localhost:3000
 src/
 ├── app/                  # Next.js App Router (root layout hosts the canvas)
 ├── components/
-│   ├── canvas/           # Canvas host, PDF loader, export/camera buttons
+│   ├── canvas/           # Canvas host + PDF loader
 │   └── ui/               # shadcn primitives
 ├── tools/
 │   ├── pin/              # Pin tool — StateNode, ShapeUtil, attachment side-effects
 │   └── camera/           # Camera tool — StateNode, crop overlay, export pipeline
 └── lib/
-    ├── pdf/              # pdf.js loader, page layout, OffscreenCanvas renderer, pdf-lib export
+    ├── pdf/              # pdf.js loader, page layout, OffscreenCanvas renderer
     └── utils.ts          # cn() helper
 tests/e2e/                # Playwright specs (one per spec task)
 ```

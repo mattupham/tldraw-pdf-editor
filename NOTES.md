@@ -28,6 +28,8 @@
 
 ## Task 4 — Camera Tool
 
+**Toolbar placement.** Registered alongside the pin tool in the tldraw toolbar (left of the pin) via `overrides.tools`, with keyboard shortcut `c`. Renders through a custom `TldrawUiButton` child with a lucide `Camera` icon — same pattern as the pin button, for the same reason (tldraw's default `mask-image` pipeline strips color, and we want the lucide stroke to render natively). Previous iteration used a standalone shadcn button in the top-right; moving it into the toolbar matches the spec and keeps both custom tools discoverable in the same place.
+
 **StateNode atom for cross-component state.** The drag rectangle (`startX/Y`, `currentX/Y`) lives in a tldraw `atom` (`cropStateAtom`) exported from `camera-tool.ts`. The `CropOverlay` component reads it via `useValue()`, which subscribes to signal changes and re-renders reactively without polling or manual event wiring.
 
 **`editor.toImage()` vs. `getSvgElement()` + canvas.** `toImage` directly returns a `Blob` in the requested format and accepts a `bounds` argument that clips the output exactly to the rectangle — no manual cropping needed. It also handles the DPR scaling via `pixelRatio`.
@@ -47,13 +49,13 @@
 ### Accessibility (a11y)
 
 **aria-label coverage.** Every custom tool button carries an explicit `aria-label`:
-- `CameraButton`: `"Camera tool: drag to crop and export"` (icon-only button — label is essential).
-- `ExportButton`: `aria-label` updates dynamically (`"Export PDF"` / `"Exporting PDF, please wait"`) during the async export so screen readers announce the busy state. The button is also `disabled` during export, which is the standard mechanism for communicating non-interactivity.
-- Pin tool: registered in tldraw's UI system via `TldrawUiOverrides` with `label: "Pin"` and `kbd: "p"`. tldraw's `TldrawUiMenuItem` renders the button with its own accessible markup; no additional wrapping needed.
+- Pin toolbar button: registered with `label: "Pin"` + `kbd: "p"`.
+- Camera toolbar button: registered with `label: "Camera"` + `kbd: "c"`.
+- Both are icon-only, so the label is essential for screen readers.
 
-**Keyboard reach.** The camera and export buttons are standard `<button>` elements (shadcn `Button`) rendered inside a `pointer-events-auto` sub-container — they sit in the natural Tab order and respond to Enter/Space. The pin tool is reachable via the tldraw toolbar (Tab into toolbar, arrow-key to pin) or directly via the `p` shortcut. Decorative SVGs (`PinShape`, `CropOverlay`) carry `aria-hidden="true"`.
+**Keyboard reach.** Both custom tools are reachable via the tldraw toolbar (Tab into toolbar, arrow-key between items) or directly via their single-key shortcuts (`p`, `c`). Decorative SVGs (`PinShape`, `CropOverlay`) carry `aria-hidden="true"`.
 
-**Focus ring.** shadcn `Button` applies `focus-visible:ring-2 focus-visible:ring-ring` out of the box; no override was needed.
+**Focus ring.** `TldrawUiButton` inherits tldraw's native focus styling — no override needed.
 
 **`prefers-reduced-motion`.** The marching-ants crop animation is already gated behind `@media (prefers-reduced-motion: no-preference)` in `globals.css`.
 

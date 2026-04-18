@@ -22,10 +22,8 @@ test("camera marquee triggers PNG download", async ({ page }) => {
 
   await page.waitForTimeout(100)
 
-  // Activate camera tool via the toolbar button
-  await page
-    .getByRole("button", { name: "Camera tool: drag to crop and export" })
-    .click()
+  // Activate camera tool via the tldraw toolbar button
+  await page.getByRole("button", { name: "Camera", exact: true }).click()
 
   const viewport = page.viewportSize() ?? { width: 1280, height: 720 }
   const cx = viewport.width / 2
