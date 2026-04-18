@@ -19,15 +19,23 @@ interface PdfShapesProps {
   onError?: (message: string) => void
 }
 
+function blobToDataUrl(blob: Blob): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader()
+    reader.onload = () => resolve(reader.result as string)
+    reader.onerror = reject
+    reader.readAsDataURL(blob)
+  })
+}
+
 async function createPageShape(
   editor: Editor,
   pageIndex: number,
   blob: Blob,
   dims: PageDimensions,
-  urls: string[]
+  _urls: string[]
 ) {
-  const url = URL.createObjectURL(blob)
-  urls.push(url)
+  const url = await blobToDataUrl(blob)
   const assetId = AssetRecordType.createId()
 
   editor.createAssets([
