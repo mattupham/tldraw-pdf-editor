@@ -1,8 +1,8 @@
 "use client"
 
-import type { TLPinShape } from "@/tools/pin/pin-shape-util"
 import { useEffect } from "react"
 import type { Editor, TLShape, TLShapeId } from "tldraw"
+import type { TLPinShape } from "@/tools/pin/pin-shape-util"
 
 export interface PinSnapshot {
   id: TLShapeId
