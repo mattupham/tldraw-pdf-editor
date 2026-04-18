@@ -2,7 +2,9 @@
 
 import { Skeleton } from "@/components/ui/skeleton"
 import { useState } from "react"
+import Canvas from "./editor"
 import { PdfLoader } from "./pdf-loader"
+import { PdfShapes } from "./pdf-shapes"
 
 type CanvasState =
   | { status: "empty" }
@@ -60,13 +62,9 @@ export function CanvasHost() {
     )
   }
 
-  // loaded — Phase 3 will replace this placeholder with <Tldraw />
   return (
-    <div
-      className="flex min-h-svh items-center justify-center text-sm text-muted-foreground"
-      data-testid="canvas-loaded"
-    >
-      PDF ready — {state.bytes.byteLength} bytes loaded
-    </div>
+    <Canvas>
+      <PdfShapes bytes={state.bytes} />
+    </Canvas>
   )
 }
