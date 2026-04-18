@@ -19,15 +19,22 @@ interface PdfShapesProps {
   onError?: (message: string) => void
 }
 
+function blobToDataUrl(blob: Blob): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader()
+    reader.onload = () => resolve(reader.result as string)
+    reader.onerror = reject
+    reader.readAsDataURL(blob)
+  })
+}
+
 async function createPageShape(
   editor: Editor,
   pageIndex: number,
   blob: Blob,
-  dims: PageDimensions,
-  urls: string[]
+  dims: PageDimensions
 ) {
-  const url = URL.createObjectURL(blob)
-  urls.push(url)
+  const url = await blobToDataUrl(blob)
   const assetId = AssetRecordType.createId()
 
   editor.createAssets([
@@ -69,7 +76,6 @@ export function PdfShapes({ bytes, onError }: PdfShapesProps) {
     let pdf: PDFDocumentProxy
     let unsubscribe: (() => void) | undefined
     const renderedPages = new Set<number>()
-    const objectUrls: string[] = []
     let layout: PageDimensions[] = []
 
     async function renderAndCreate(pageIndex: number) {
@@ -79,7 +85,7 @@ export function PdfShapes({ bytes, onError }: PdfShapesProps) {
       renderedPages.add(pageIndex)
       const blob = await renderPage(pdf, pageIndex + 1)
       if (aborted) return
-      await createPageShape(ed, pageIndex, blob, dims, objectUrls)
+      await createPageShape(ed, pageIndex, blob, dims)
     }
 
     async function init() {
@@ -144,7 +150,6 @@ export function PdfShapes({ bytes, onError }: PdfShapesProps) {
     return () => {
       aborted = true
       unsubscribe?.()
-      for (const url of objectUrls) URL.revokeObjectURL(url)
     }
   }, [editor, bytes])
 
