@@ -12,7 +12,7 @@ export class PinTool extends StateNode {
     const { editor } = this
     const point = editor.inputs.getCurrentPagePoint()
     const nonPinShapes = editor
-      .getShapesAtPoint(point)
+      .getShapesAtPoint(point, { hitInside: true })
       .filter((shape) => shape.type !== "pin")
 
     const attachedShapeIds: TLShapeId[] = nonPinShapes.map((shape) => shape.id)
