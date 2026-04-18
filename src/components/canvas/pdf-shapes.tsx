@@ -19,11 +19,11 @@ interface PdfShapesProps {
   onError?: (message: string) => void
 }
 
-async function blobToDataUrl(blob: Blob): Promise<string> {
-  return new Promise<string>((resolve, reject) => {
+function blobToDataUrl(blob: Blob): Promise<string> {
+  return new Promise((resolve, reject) => {
     const reader = new FileReader()
     reader.onload = () => resolve(reader.result as string)
-    reader.onerror = () => reject(reader.error)
+    reader.onerror = reject
     reader.readAsDataURL(blob)
   })
 }
@@ -32,11 +32,8 @@ async function createPageShape(
   editor: Editor,
   pageIndex: number,
   blob: Blob,
-  dims: PageDimensions,
-  _urls: string[]
+  dims: PageDimensions
 ) {
-  // tldraw's asset schema only accepts http:, https:, data:, or asset: —
-  // blob: is rejected, so convert to a data URL.
   const url = await blobToDataUrl(blob)
   const assetId = AssetRecordType.createId()
 
@@ -79,7 +76,6 @@ export function PdfShapes({ bytes, onError }: PdfShapesProps) {
     let pdf: PDFDocumentProxy
     let unsubscribe: (() => void) | undefined
     const renderedPages = new Set<number>()
-    const objectUrls: string[] = []
     let layout: PageDimensions[] = []
 
     async function renderAndCreate(pageIndex: number) {
@@ -89,7 +85,7 @@ export function PdfShapes({ bytes, onError }: PdfShapesProps) {
       renderedPages.add(pageIndex)
       const blob = await renderPage(pdf, pageIndex + 1)
       if (aborted) return
-      await createPageShape(ed, pageIndex, blob, dims, objectUrls)
+      await createPageShape(ed, pageIndex, blob, dims)
     }
 
     async function init() {
@@ -154,7 +150,6 @@ export function PdfShapes({ bytes, onError }: PdfShapesProps) {
     return () => {
       aborted = true
       unsubscribe?.()
-      for (const url of objectUrls) URL.revokeObjectURL(url)
     }
   }, [editor, bytes])
 
