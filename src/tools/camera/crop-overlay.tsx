@@ -1,7 +1,7 @@
 "use client"
 
+import { cropStateAtom } from "@/tools/camera/camera-tool"
 import { useEditor, useValue } from "tldraw"
-import { cropStateAtom } from "./camera-tool"
 
 export function CropOverlay() {
   const editor = useEditor()

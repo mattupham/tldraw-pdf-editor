@@ -1,3 +1,4 @@
+import { PinShape } from "@/tools/pin/pin-shape"
 import {
   HTMLContainer,
   type RecordProps,
@@ -8,7 +9,6 @@ import {
   type TLShapeId,
   shapeIdValidator,
 } from "tldraw"
-import { PinShape } from "./pin-shape"
 
 export type TLPinShapeProps = {
   attachedShapeIds: TLShapeId[]

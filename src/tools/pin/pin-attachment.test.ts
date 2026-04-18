@@ -1,10 +1,10 @@
-import type { TLShapeId } from "tldraw"
-import { describe, expect, it } from "vitest"
 import {
   type PinSnapshot,
   type ShapeSnapshot,
   computePinUpdates,
-} from "./use-pin-attachment"
+} from "@/tools/pin/use-pin-attachment"
+import type { TLShapeId } from "tldraw"
+import { describe, expect, it } from "vitest"
 
 const id = (s: string) => `shape:${s}` as TLShapeId
 

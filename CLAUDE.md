@@ -32,3 +32,4 @@ This is a Next.js 16 App Router template wired to shadcn/ui. It is intentionally
 - Biome has no Tailwind class sorter — sort classes manually when adding new ones.
 - TypeScript `strict` is on, `noUncheckedIndexedAccess: true`.
 - Pre-commit hook (husky + lint-staged) runs `biome check --write --no-errors-on-unmatched` on staged files (lint-staged handles file selection).
+- **Absolute imports only**: all imports in `src/` and `tests/` must use the `@/` alias (e.g. `@/tools/pin/pin-shape-util`). Relative paths (`./`, `../`) are forbidden and fail `pnpm check` via `scripts/check-no-relative-imports.mjs`. Biome 1.9.x has no built-in rule for this; the script fills the gap.
