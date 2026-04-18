@@ -12,6 +12,7 @@
     "check": "biome check --write .",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
+    "test:e2e": "playwright test",
     "postinstall": "cp node_modules/pdfjs-dist/build/pdf.worker.min.mjs public/",
     "prepare": "husky"
   },
@@ -35,6 +36,7 @@
   },
   "devDependencies": {
     "@biomejs/biome": "^1.9.4",
+    "@playwright/test": "^1.59.1",
     "@tailwindcss/postcss": "^4.2.1",
     "@types/node": "^25.5.0",
     "@types/react": "^19.2.14",

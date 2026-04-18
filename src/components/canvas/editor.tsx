@@ -90,11 +90,18 @@ export default function Canvas({
 }) {
   const [editor, setEditor] = useState<Editor | null>(null)
 
+  function handleMount(e: Editor) {
+    setEditor(e)
+    // Test hook — lets E2E specs call editor APIs via window.__editor
+    // @ts-expect-error test-only
+    window.__editor = e
+  }
+
   return (
     <EditorContext.Provider value={editor}>
       <div className="fixed inset-0">
         <Tldraw
-          onMount={setEditor}
+          onMount={handleMount}
           shapeUtils={customShapeUtils}
           tools={customTools}
           overrides={uiOverrides}
