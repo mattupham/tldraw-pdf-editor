@@ -1,10 +1,16 @@
-import { GlobalWorkerOptions, getDocument } from "pdfjs-dist"
 import type { PDFDocumentProxy } from "pdfjs-dist"
+
+// Dynamic import keeps pdfjs-dist out of the SSR bundle — it accesses DOMMatrix
+// and other browser globals at module evaluation time, crashing Next.js builds.
+async function pdfjs() {
+  return import("pdfjs-dist")
+}
 
 let workerSet = false
 
-function ensureWorker() {
+async function ensureWorker() {
   if (workerSet) return
+  const { GlobalWorkerOptions } = await pdfjs()
   GlobalWorkerOptions.workerSrc = "/pdf.worker.min.mjs"
   workerSet = true
 }
@@ -19,7 +25,8 @@ export interface PageDimensions {
 const GUTTER = 20
 
 export async function openPdf(bytes: Uint8Array): Promise<PDFDocumentProxy> {
-  ensureWorker()
+  await ensureWorker()
+  const { getDocument } = await pdfjs()
   return getDocument({ data: bytes }).promise
 }
 
