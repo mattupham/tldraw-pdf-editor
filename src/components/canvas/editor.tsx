@@ -11,7 +11,11 @@ export function useEditor(): Editor | null {
   return useContext(EditorContext)
 }
 
-export default function Canvas() {
+export default function Canvas({
+  children,
+}: {
+  children?: React.ReactNode
+}) {
   const [editor, setEditor] = useState<Editor | null>(null)
 
   return (
@@ -19,6 +23,7 @@ export default function Canvas() {
       <div className="fixed inset-0">
         <Tldraw onMount={setEditor} />
       </div>
+      {children}
     </EditorContext.Provider>
   )
 }
