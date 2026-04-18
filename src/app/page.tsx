@@ -1,5 +1,5 @@
-import Canvas from "@/components/canvas/editor"
+import { CanvasHost } from "@/components/canvas/canvas-host"
 
 export default function Page() {
-  return <Canvas />
+  return <CanvasHost />
 }
