@@ -19,15 +19,25 @@ interface PdfShapesProps {
   onError?: (message: string) => void
 }
 
+async function blobToDataUrl(blob: Blob): Promise<string> {
+  return new Promise<string>((resolve, reject) => {
+    const reader = new FileReader()
+    reader.onload = () => resolve(reader.result as string)
+    reader.onerror = () => reject(reader.error)
+    reader.readAsDataURL(blob)
+  })
+}
+
 async function createPageShape(
   editor: Editor,
   pageIndex: number,
   blob: Blob,
   dims: PageDimensions,
-  urls: string[]
+  _urls: string[]
 ) {
-  const url = URL.createObjectURL(blob)
-  urls.push(url)
+  // tldraw's asset schema only accepts http:, https:, data:, or asset: —
+  // blob: is rejected, so convert to a data URL.
+  const url = await blobToDataUrl(blob)
   const assetId = AssetRecordType.createId()
 
   editor.createAssets([

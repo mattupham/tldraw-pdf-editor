@@ -23,7 +23,14 @@ export type ShapeMove = ShapeSnapshot
 // Module-level propagation guard. Lives outside React so it survives hook
 // remounts and stays shared across any concurrent handler invocations inside
 // a single editor batch.
-let isPropagating = false
+//
+// A plain boolean isn't enough: tldraw's flushAtomicCallbacks while-loop
+// processes each round of pendingAfterEvents in a new iteration, resetting
+// handler context between rounds. When shapeA moves and we propagate shapeB,
+// shapeB's afterChange fires in the *next* iteration with the boolean already
+// reset to false, triggering another cascade. Tracking each propagated ID
+// explicitly lets us skip exactly those shapes in subsequent iterations.
+const propagatedIds = new Set<TLShapeId>()
 
 // Pure helper so we can unit-test the delta math without mounting tldraw.
 // Returns the list of shape/pin moves triggered by `movedShapeId` shifting by
@@ -92,7 +99,10 @@ export function usePinAttachment(editor: Editor | null) {
     const disposeChange = editor.sideEffects.registerAfterChangeHandler(
       "shape",
       (prev, next) => {
-        if (isPropagating) return
+        if (propagatedIds.has(next.id)) {
+          propagatedIds.delete(next.id)
+          return
+        }
         if (next.type === "pin") return
         if (next.x === prev.x && next.y === prev.y) return
 
@@ -110,21 +120,19 @@ export function usePinAttachment(editor: Editor | null) {
 
         if (updates.length === 0) return
 
-        isPropagating = true
-        try {
-          editor.run(() => {
-            editor.updateShapes(
-              updates.map((u) => ({
-                id: u.id,
-                type: u.type,
-                x: u.x,
-                y: u.y,
-              }))
-            )
-          })
-        } finally {
-          isPropagating = false
+        for (const update of updates) {
+          propagatedIds.add(update.id)
         }
+        editor.run(() => {
+          editor.updateShapes(
+            updates.map((u) => ({
+              id: u.id,
+              type: u.type,
+              x: u.x,
+              y: u.y,
+            }))
+          )
+        })
       }
     )
 
