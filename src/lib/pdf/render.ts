@@ -26,16 +26,17 @@ export async function openPdf(bytes: Uint8Array): Promise<PDFDocumentProxy> {
 export async function getPageLayout(
   pdf: PDFDocumentProxy
 ): Promise<PageDimensions[]> {
+  const pages = await Promise.all(
+    Array.from({ length: pdf.numPages }, (_, i) => pdf.getPage(i + 1))
+  )
+
   const layout: PageDimensions[] = []
   let yOffset = 0
 
-  for (let i = 1; i <= pdf.numPages; i++) {
-    const page = await pdf.getPage(i)
+  for (const page of pages) {
     const vp = page.getViewport({ scale: 1 })
-    const w = vp.width
-    const h = vp.height
-    layout.push({ w, h, x: -w / 2, y: yOffset })
-    yOffset += h + GUTTER
+    layout.push({ w: vp.width, h: vp.height, x: -vp.width / 2, y: yOffset })
+    yOffset += vp.height + GUTTER
   }
 
   return layout
@@ -46,10 +47,7 @@ export async function renderPage(
   pageNumber: number,
   { dprCap = 3 }: { dprCap?: number } = {}
 ): Promise<Blob> {
-  const scale = Math.min(
-    typeof devicePixelRatio === "number" ? devicePixelRatio * 2 : 2,
-    dprCap
-  )
+  const scale = Math.min(devicePixelRatio * 2, dprCap)
   const page = await pdf.getPage(pageNumber)
   const viewport = page.getViewport({ scale })
   const canvas = new OffscreenCanvas(
@@ -65,16 +63,4 @@ export async function renderPage(
     viewport,
   }).promise
   return canvas.convertToBlob({ type: "image/png" })
-}
-
-export async function renderPages(
-  bytes: Uint8Array,
-  { dprCap = 3 }: { dprCap?: number } = {}
-): Promise<Blob[]> {
-  const pdf = await openPdf(bytes)
-  const blobs: Blob[] = []
-  for (let i = 1; i <= pdf.numPages; i++) {
-    blobs.push(await renderPage(pdf, i, { dprCap }))
-  }
-  return blobs
 }

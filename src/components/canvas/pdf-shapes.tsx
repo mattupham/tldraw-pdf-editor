@@ -8,7 +8,7 @@ import {
   renderPage,
 } from "@/lib/pdf/render"
 import type { PDFDocumentProxy } from "pdfjs-dist"
-import { useEffect, useRef } from "react"
+import { useEffect } from "react"
 import { AssetRecordType, createShapeId } from "tldraw"
 import type { Editor } from "tldraw"
 
@@ -22,9 +22,11 @@ async function createPageShape(
   editor: Editor,
   pageIndex: number,
   blob: Blob,
-  dims: PageDimensions
+  dims: PageDimensions,
+  urls: string[]
 ) {
   const url = URL.createObjectURL(blob)
+  urls.push(url)
   const assetId = AssetRecordType.createId()
 
   editor.createAssets([
@@ -55,34 +57,39 @@ async function createPageShape(
 
 export function PdfShapes({ bytes }: PdfShapesProps) {
   const editor = useEditor()
-  const loadedRef = useRef(false)
 
   useEffect(() => {
-    if (!editor || loadedRef.current) return
-    loadedRef.current = true
+    if (!editor) return
 
     const ed = editor
+    let aborted = false
     let pdf: PDFDocumentProxy
     let unsubscribe: (() => void) | undefined
     const renderedPages = new Set<number>()
+    const objectUrls: string[] = []
     let layout: PageDimensions[] = []
 
     async function renderAndCreate(pageIndex: number) {
-      if (renderedPages.has(pageIndex)) return
+      if (aborted || renderedPages.has(pageIndex)) return
       const dims = layout[pageIndex]
       if (!dims) return
       renderedPages.add(pageIndex)
       const blob = await renderPage(pdf, pageIndex + 1)
-      await createPageShape(ed, pageIndex, blob, dims)
+      if (aborted) return
+      await createPageShape(ed, pageIndex, blob, dims, objectUrls)
     }
 
     async function init() {
       pdf = await openPdf(bytes)
+      if (aborted) return
+
       layout = await getPageLayout(pdf)
+      if (aborted) return
 
       const initialCount = Math.min(INITIAL_PAGES, pdf.numPages)
       for (let i = 0; i < initialCount; i++) {
         await renderAndCreate(i)
+        if (aborted) return
       }
 
       ed.zoomToFit({ animation: { duration: 0 } })
@@ -94,6 +101,7 @@ export function PdfShapes({ bytes }: PdfShapesProps) {
       unsubscribe = ed.store.listen(() => {
         if (debounceTimer) clearTimeout(debounceTimer)
         debounceTimer = setTimeout(() => {
+          if (aborted) return
           const vp = ed.getViewportPageBounds()
           for (let i = INITIAL_PAGES; i < layout.length; i++) {
             if (renderedPages.has(i)) continue
@@ -115,7 +123,9 @@ export function PdfShapes({ bytes }: PdfShapesProps) {
     init()
 
     return () => {
+      aborted = true
       unsubscribe?.()
+      for (const url of objectUrls) URL.revokeObjectURL(url)
     }
   }, [editor, bytes])
 
