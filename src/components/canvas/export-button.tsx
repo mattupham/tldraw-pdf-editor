@@ -29,7 +29,12 @@ export function ExportButton({ bytes }: ExportButtonProps) {
   }
 
   return (
-    <Button onClick={handleExport} disabled={exporting}>
+    <Button
+      onClick={handleExport}
+      disabled={exporting}
+      aria-label={exporting ? "Exporting PDF, please wait" : "Export PDF"}
+      aria-busy={exporting}
+    >
       {exporting ? "Exporting…" : "Export PDF"}
     </Button>
   )
