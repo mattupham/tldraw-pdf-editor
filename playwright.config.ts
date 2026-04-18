@@ -19,9 +19,12 @@ export default defineConfig({
     },
   ],
   webServer: {
-    command: "pnpm dev",
+    // CI serves the already-built prod bundle (pnpm build runs earlier in the
+    // workflow); local dev reuses Turbopack's running dev server.
+    command: process.env.CI ? "pnpm start" : "pnpm dev",
     url: "http://localhost:3000",
     reuseExistingServer: !process.env.CI,
     timeout: 60_000,
+    env: { NEXT_PUBLIC_E2E: "1" },
   },
 })

@@ -8,6 +8,10 @@ on:
 jobs:
   ci:
     runs-on: ubuntu-latest
+    # Exposes window.__editor in the prod bundle Playwright serves. CI
+    # artifacts only — real prod builds must not set this.
+    env:
+      NEXT_PUBLIC_E2E: "1"
     steps:
       - uses: actions/checkout@v4
 
