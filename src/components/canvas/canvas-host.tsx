@@ -40,31 +40,39 @@ export function CanvasHost() {
 
   if (state.status === "empty" || state.status === "error") {
     return (
-      <PdfLoader
-        onFile={handleFile}
-        onExample={handleExample}
-        onError={handleError}
-        error={state.status === "error" ? state.message : undefined}
-      />
+      <main>
+        <PdfLoader
+          onFile={handleFile}
+          onExample={handleExample}
+          onError={handleError}
+          error={state.status === "error" ? state.message : undefined}
+        />
+      </main>
     )
   }
 
   if (state.status === "loading") {
     return (
-      <div className="flex min-h-svh items-center justify-center">
+      <main
+        aria-busy="true"
+        aria-label="Loading PDF"
+        className="flex min-h-svh items-center justify-center"
+      >
         <div className="flex w-full max-w-sm flex-col gap-3 p-8">
           <Skeleton className="h-6 w-3/4" />
           <Skeleton className="h-4 w-full" />
           <Skeleton className="h-4 w-5/6" />
           <Skeleton className="mt-4 h-64 w-full rounded-xl" />
         </div>
-      </div>
+      </main>
     )
   }
 
   return (
-    <Canvas>
-      <PdfShapes bytes={state.bytes} onError={handleError} />
-    </Canvas>
+    <main>
+      <Canvas>
+        <PdfShapes bytes={state.bytes} onError={handleError} />
+      </Canvas>
+    </main>
   )
 }

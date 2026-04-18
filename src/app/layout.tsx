@@ -1,3 +1,4 @@
+import type { Metadata } from "next"
 import { Geist_Mono, Inter } from "next/font/google"
 import { Toaster } from "sonner"
 
@@ -5,6 +6,12 @@ import "@/app/globals.css"
 import "tldraw/tldraw.css"
 import { ThemeProvider } from "@/components/theme-provider"
 import { cn } from "@/lib/utils"
+
+export const metadata: Metadata = {
+  title: "H2 — PDF Canvas",
+  description:
+    "Drop a PDF onto a tldraw canvas. Pin and crop with custom tools.",
+}
 
 const inter = Inter({ subsets: ["latin"], variable: "--font-sans" })
 
