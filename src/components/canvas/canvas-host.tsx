@@ -12,16 +12,30 @@ type CanvasState =
 export function CanvasHost() {
   const [state, setState] = useState<CanvasState>({ status: "empty" })
 
-  function handleFile(bytes: Uint8Array) {
+  async function handleFile(file: File) {
     setState({ status: "loading" })
-    // Yield to paint the skeleton before the (potentially heavy) downstream work
-    setTimeout(() => {
-      setState({ status: "loaded", bytes })
-    }, 0)
+    try {
+      const buf = await file.arrayBuffer()
+      setState({ status: "loaded", bytes: new Uint8Array(buf) })
+    } catch {
+      setState({ status: "empty" })
+    }
+  }
+
+  async function handleExample() {
+    setState({ status: "loading" })
+    try {
+      const res = await fetch("/sample.pdf")
+      if (!res.ok) throw new Error(`fetch failed: ${res.status}`)
+      const buf = await res.arrayBuffer()
+      setState({ status: "loaded", bytes: new Uint8Array(buf) })
+    } catch {
+      setState({ status: "empty" })
+    }
   }
 
   if (state.status === "empty") {
-    return <PdfLoader onFile={handleFile} />
+    return <PdfLoader onFile={handleFile} onExample={handleExample} />
   }
 
   if (state.status === "loading") {
