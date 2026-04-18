@@ -73,7 +73,7 @@
 
 ### Security
 
-**Headers.** `next.config.mjs` ships a CSP (`default-src 'self'`, `script-src 'self' 'unsafe-inline' 'wasm-unsafe-eval'`, `worker-src 'self' blob:`, `frame-ancestors 'none'`), plus `X-Frame-Options: DENY`, `X-Content-Type-Options: nosniff`, `Referrer-Policy: strict-origin-when-cross-origin`, and a `Permissions-Policy` that denies camera/microphone/geolocation. `'unsafe-inline'` on `script-src` is required because Next.js ships inline bootstrap scripts (next-themes color-scheme init, RSC hydration pushes). The honest long-term fix is a `middleware.ts` that mints a per-request nonce and threads it to both the CSP header and Next.js; deferred as follow-up. The rest of the policy still meaningfully narrows blast radius.
+**Headers.** `next.config.mjs` ships a CSP (`default-src 'self'`, `script-src 'self' 'unsafe-inline' 'wasm-unsafe-eval'`, `worker-src 'self' blob:`, `object-src 'none'`, `frame-ancestors 'none'`), plus `X-Frame-Options: DENY`, `X-Content-Type-Options: nosniff`, `Referrer-Policy: strict-origin-when-cross-origin`, and a `Permissions-Policy` that denies camera/microphone/geolocation. `'unsafe-inline'` on `script-src` is required because Next.js ships inline bootstrap scripts (next-themes color-scheme init, RSC hydration pushes). The honest long-term fix is a `middleware.ts` that mints a per-request nonce and threads it to both the CSP header and Next.js; deferred as follow-up. The rest of the policy still meaningfully narrows blast radius.
 
 **pdfjs hardening.** `getDocument` is called with `isEvalSupported: false`, `disableAutoFetch: true`, `disableStream: true` to close the class of font-eval CVEs and disable speculative range fetches we don't need (the bytes are already in memory).
 

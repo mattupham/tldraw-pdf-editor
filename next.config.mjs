@@ -29,6 +29,7 @@ const csp = [
   "font-src 'self' data:",
   "worker-src 'self' blob:",
   "connect-src 'self'",
+  "object-src 'none'",
   "frame-ancestors 'none'",
   "base-uri 'self'",
   "form-action 'self'",

@@ -3,7 +3,7 @@
 import type { PDFDocumentProxy } from "pdfjs-dist"
 import { useEffect, useRef } from "react"
 import type { Editor, TLImageAsset } from "tldraw"
-import { AssetRecordType, createShapeId, react } from "tldraw"
+import { AssetRecordType, Box, createShapeId, react } from "tldraw"
 import { useEditor } from "@/components/canvas/editor"
 import {
   getPageLayout,
@@ -33,6 +33,9 @@ async function buildPageAsset(
 ): Promise<TLImageAsset> {
   const name = `page-${pageIndex + 1}.png`
   const file = new File([blob], name, { type: "image/png" })
+  // AssetRecordType.create returns the widened TLAsset union (image |
+  // video | bookmark); the `as` narrows it based on the literal type: "image"
+  // we pass. No generic overload is available on RecordType.create.
   const asset = AssetRecordType.create({
     id: AssetRecordType.createId(),
     type: "image",
@@ -77,6 +80,25 @@ function createPageShape(
       },
     ])
   })
+}
+
+// Bounding box of a set of page rectangles, in page-space. Returned as a
+// tldraw Box so we can hand it to editor.zoomToBounds.
+function unionBounds(pages: PageDimensions[]): Box {
+  if (pages.length === 0) return new Box(0, 0, 0, 0)
+  const [first, ...rest] = pages
+  if (!first) return new Box(0, 0, 0, 0)
+  let minX = first.x
+  let minY = first.y
+  let maxX = first.x + first.w
+  let maxY = first.y + first.h
+  for (const p of rest) {
+    if (p.x < minX) minX = p.x
+    if (p.y < minY) minY = p.y
+    if (p.x + p.w > maxX) maxX = p.x + p.w
+    if (p.y + p.h > maxY) maxY = p.y + p.h
+  }
+  return new Box(minX, minY, maxX - minX, maxY - minY)
 }
 
 // Bounded-concurrency parallel map. pdfjs queues jobs on its worker so we don't
@@ -146,20 +168,22 @@ export function PdfShapes({ bytes, onError }: PdfShapesProps) {
         const initialCount = Math.min(INITIAL_PAGES, pdf.numPages)
         if (initialCount === 0) return
 
-        // Render page 1 first and zoom immediately so first meaningful paint
-        // isn't gated on the rest of the initial batch.
+        // Camera first, pages second. zoomToBounds over the precomputed
+        // layout lands the camera in the right place before any shapes
+        // exist, so as pages render in they slot into the viewport. Avoids
+        // the "camera snaps away from the user" UX we'd get by re-fitting
+        // mid-render.
+        const bounds = unionBounds(layout.slice(0, initialCount))
+        ed.zoomToBounds(bounds, { animation: { duration: 0 } })
+
+        // Page 1 first so first meaningful paint isn't gated on the batch;
+        // pages 2..N in parallel with bounded concurrency.
         await renderAndCreate(0)
         if (aborted) return
-        ed.zoomToFit({ animation: { duration: 0 } })
-
-        // Pages 2..N render in parallel with bounded concurrency.
         if (initialCount > 1) {
           const rest = Array.from({ length: initialCount - 1 }, (_, i) => i + 1)
           await mapConcurrent(rest, renderAndCreate, RENDER_CONCURRENCY)
           if (aborted) return
-          // Re-fit after the initial batch lands — the first zoom only saw
-          // page 1, which left pages 2..N off-viewport for multi-page decks.
-          ed.zoomToFit({ animation: { duration: 0 } })
         }
 
         if (pdf.numPages <= INITIAL_PAGES) return

@@ -122,12 +122,12 @@ export default function Canvas({ children }: { children?: React.ReactNode }) {
     setEditor(e)
     // Test hook — lets E2E specs drive tldraw via window.__editor. Gated so
     // it never leaks into a real production bundle where a browser extension
-    // could use it. NEXT_PUBLIC_E2E=1 opts CI's prod build back in.
+    // could use it. NEXT_PUBLIC_E2E=1 opts CI's prod build back in. The
+    // Window augmentation lives in src/types/window.d.ts.
     if (
       process.env.NODE_ENV !== "production" ||
       process.env.NEXT_PUBLIC_E2E === "1"
     ) {
-      // @ts-expect-error test-only
       window.__editor = e
     }
   }

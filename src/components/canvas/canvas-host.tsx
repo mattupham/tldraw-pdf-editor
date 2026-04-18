@@ -53,12 +53,13 @@ export function CanvasHost() {
 
   if (state.status === "loading") {
     return (
-      <main
-        aria-busy="true"
-        aria-label="Loading PDF"
-        className="flex min-h-svh items-center justify-center"
-      >
-        <div className="flex w-full max-w-sm flex-col gap-3 p-8">
+      <main className="flex min-h-svh items-center justify-center">
+        <div
+          role="status"
+          aria-live="polite"
+          aria-label="Loading PDF"
+          className="flex w-full max-w-sm flex-col gap-3 p-8"
+        >
           <Skeleton className="h-6 w-3/4" />
           <Skeleton className="h-4 w-full" />
           <Skeleton className="h-4 w-5/6" />

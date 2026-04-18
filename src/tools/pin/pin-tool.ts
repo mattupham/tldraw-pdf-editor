@@ -17,10 +17,11 @@ export class PinTool extends StateNode {
     const point = editor.inputs.getCurrentPagePoint()
     // Skip pins (we don't attach pins to pins) and the PDF-page image shapes
     // — those are locked backdrops; attaching to them would let a stray drag
-    // of the page drag every pin on it.
+    // of the page drag every pin on it. shape.meta is guaranteed by tldraw
+    // to be a JsonObject (never undefined), so no optional chaining needed.
     const nonPinShapes = editor
       .getShapesAtPoint(point, { hitInside: true })
-      .filter((shape) => shape.type !== "pin" && !shape.meta?.isPdfPage)
+      .filter((shape) => shape.type !== "pin" && !shape.meta.isPdfPage)
 
     const attachedShapeIds: TLShapeId[] = nonPinShapes.map((shape) => shape.id)
 
