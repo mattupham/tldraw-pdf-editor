@@ -1,27 +1,23 @@
 "use client"
 
 import { useEditor, useValue } from "tldraw"
-import { cropStateAtom } from "./camera-tool"
+import { cropStateAtom } from "@/tools/camera/camera-tool"
 
 export function CropOverlay() {
   const editor = useEditor()
 
-  const rect = useValue(
-    "cropRect",
-    () => {
-      const state = cropStateAtom.get()
-      if (state.status !== "dragging") return null
-      const s = editor.pageToScreen({ x: state.startX, y: state.startY })
-      const e = editor.pageToScreen({ x: state.currentX, y: state.currentY })
-      return {
-        x: Math.min(s.x, e.x),
-        y: Math.min(s.y, e.y),
-        w: Math.abs(e.x - s.x),
-        h: Math.abs(e.y - s.y),
-      }
-    },
-    [editor]
-  )
+  const rect = useValue("cropRect", () => {
+    const state = cropStateAtom.get()
+    if (state.status !== "dragging") return null
+    const s = editor.pageToScreen({ x: state.startX, y: state.startY })
+    const e = editor.pageToScreen({ x: state.currentX, y: state.currentY })
+    return {
+      x: Math.min(s.x, e.x),
+      y: Math.min(s.y, e.y),
+      w: Math.abs(e.x - s.x),
+      h: Math.abs(e.y - s.y),
+    }
+  }, [editor])
 
   if (!rect) return null
 

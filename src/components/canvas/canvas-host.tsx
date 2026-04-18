@@ -1,10 +1,10 @@
 "use client"
 
-import { Skeleton } from "@/components/ui/skeleton"
 import { useState } from "react"
-import Canvas from "./editor"
-import { PdfLoader } from "./pdf-loader"
-import { PdfShapes } from "./pdf-shapes"
+import Canvas from "@/components/canvas/editor"
+import { PdfLoader } from "@/components/canvas/pdf-loader"
+import { PdfShapes } from "@/components/canvas/pdf-shapes"
+import { Skeleton } from "@/components/ui/skeleton"
 
 type CanvasState =
   | { status: "empty" }

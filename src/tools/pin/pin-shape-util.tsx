@@ -3,12 +3,12 @@ import {
   type RecordProps,
   Rectangle2d,
   ShapeUtil,
+  shapeIdValidator,
   T,
   type TLBaseShape,
   type TLShapeId,
-  shapeIdValidator,
 } from "tldraw"
-import { PinShape } from "./pin-shape"
+import { PinShape } from "@/tools/pin/pin-shape"
 
 export type TLPinShapeProps = {
   attachedShapeIds: TLShapeId[]

@@ -2,7 +2,7 @@
 
 import { useEffect } from "react"
 import type { Editor, TLShape, TLShapeId } from "tldraw"
-import type { TLPinShape } from "./pin-shape-util"
+import type { TLPinShape } from "@/tools/pin/pin-shape-util"
 
 export interface PinSnapshot {
   id: TLShapeId

@@ -1,16 +1,16 @@
 "use client"
 
-import { useEditor } from "@/components/canvas/editor"
-import {
-  type PageDimensions,
-  getPageLayout,
-  openPdf,
-  renderPage,
-} from "@/lib/pdf/render"
 import type { PDFDocumentProxy } from "pdfjs-dist"
 import { useEffect, useRef } from "react"
-import { AssetRecordType, createShapeId, react } from "tldraw"
 import type { Editor } from "tldraw"
+import { AssetRecordType, createShapeId, react } from "tldraw"
+import { useEditor } from "@/components/canvas/editor"
+import {
+  getPageLayout,
+  openPdf,
+  type PageDimensions,
+  renderPage,
+} from "@/lib/pdf/render"
 
 // First batch rendered eagerly so the user can see/edit immediately.
 const INITIAL_PAGES = 10

@@ -45,7 +45,7 @@ vi.stubGlobal(
 )
 
 // Import after mocks are in place
-const { openPdf, renderPage } = await import("./render")
+const { openPdf, renderPage } = await import("@/lib/pdf/render")
 
 describe("openPdf", () => {
   it("passes a cloned Uint8Array to pdfjs, preserving the caller's buffer", async () => {

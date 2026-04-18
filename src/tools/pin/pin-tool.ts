@@ -1,5 +1,9 @@
-import { StateNode, type TLShapeId, createShapeId } from "tldraw"
-import { PIN_HEIGHT, PIN_WIDTH, type TLPinShape } from "./pin-shape-util"
+import { createShapeId, StateNode, type TLShapeId } from "tldraw"
+import {
+  PIN_HEIGHT,
+  PIN_WIDTH,
+  type TLPinShape,
+} from "@/tools/pin/pin-shape-util"
 
 export class PinTool extends StateNode {
   static override id = "pin"

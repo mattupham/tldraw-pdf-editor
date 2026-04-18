@@ -1,10 +1,5 @@
 "use client"
 
-import { CameraTool } from "@/tools/camera/camera-tool"
-import { CropOverlay } from "@/tools/camera/crop-overlay"
-import { PinShapeUtil } from "@/tools/pin/pin-shape-util"
-import { PinTool } from "@/tools/pin/pin-tool"
-import { usePinAttachment } from "@/tools/pin/use-pin-attachment"
 import { Camera } from "lucide-react"
 import { createContext, useContext, useState } from "react"
 import {
@@ -18,6 +13,11 @@ import {
   useIsToolSelected,
   useTools,
 } from "tldraw"
+import { CameraTool } from "@/tools/camera/camera-tool"
+import { CropOverlay } from "@/tools/camera/crop-overlay"
+import { PinShapeUtil } from "@/tools/pin/pin-shape-util"
+import { PinTool } from "@/tools/pin/pin-tool"
+import { usePinAttachment } from "@/tools/pin/use-pin-attachment"
 
 const EditorContext = createContext<Editor | null>(null)
 
@@ -115,11 +115,7 @@ function AttachmentBridge() {
   return null
 }
 
-export default function Canvas({
-  children,
-}: {
-  children?: React.ReactNode
-}) {
+export default function Canvas({ children }: { children?: React.ReactNode }) {
   const [editor, setEditor] = useState<Editor | null>(null)
 
   function handleMount(e: Editor) {

@@ -1,12 +1,23 @@
 {
-  "$schema": "https://biomejs.dev/schemas/latest/schema.json",
-  "organizeImports": {
-    "enabled": true
-  },
+  "$schema": "https://biomejs.dev/schemas/2.4.12/schema.json",
+  "assist": { "actions": { "source": { "organizeImports": "on" } } },
   "linter": {
     "enabled": true,
     "rules": {
-      "recommended": true
+      "recommended": true,
+      "style": {
+        "noRestrictedImports": {
+          "level": "error",
+          "options": {
+            "patterns": [
+              {
+                "group": ["./**", "../**"],
+                "message": "Use the @/ path alias instead of relative imports (e.g. @/tools/pin/pin-shape-util)"
+              }
+            ]
+          }
+        }
+      }
     }
   },
   "formatter": {
@@ -23,7 +34,12 @@
       "semicolons": "asNeeded"
     }
   },
+  "css": {
+    "parser": {
+      "tailwindDirectives": true
+    }
+  },
   "files": {
-    "ignore": ["node_modules", ".next", "public"]
+    "includes": ["**", "!**/node_modules", "!**/.next", "!**/public"]
   }
 }

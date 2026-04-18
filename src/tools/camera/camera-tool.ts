@@ -1,7 +1,7 @@
 import { toast } from "sonner"
-import { Box, StateNode, atom } from "tldraw"
 import type { TLKeyboardEventInfo, TLPointerEventInfo } from "tldraw"
-import { exportCropImage } from "./export-image"
+import { atom, Box, StateNode } from "tldraw"
+import { exportCropImage } from "@/tools/camera/export-image"
 
 const MIN_CROP_SIZE = 8
 
