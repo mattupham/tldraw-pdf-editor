@@ -20,6 +20,9 @@
 # production
 /build
 
+# claude worktrees
+.claude/worktrees/
+
 # misc
 .DS_Store
 *.pem
