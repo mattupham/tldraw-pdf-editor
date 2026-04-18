@@ -55,6 +55,8 @@ function createPageShape(
         type: "image",
         x: dims.x,
         y: dims.y,
+        isLocked: true,
+        meta: { isPdfPage: true },
         props: { assetId, w: dims.w, h: dims.h },
       },
     ])

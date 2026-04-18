@@ -161,6 +161,12 @@ export function usePinAttachment(editor: Editor | null) {
             }))
           )
         })
+        // Sweep any entries whose afterChange did not consume them (validator
+        // rejection, shape deleted mid-flush, etc). Without this a stranded id
+        // would silently suppress that shape's next real drag.
+        for (const update of updates) {
+          propagatedIds.delete(update.id)
+        }
       }
     )
 

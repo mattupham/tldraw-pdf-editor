@@ -30,7 +30,17 @@ export async function openPdf(bytes: Uint8Array): Promise<PDFDocumentProxy> {
   // pdfjs transfers ownership of the backing ArrayBuffer to its worker, which
   // detaches the original. Clone here so repeat callers (e.g. Export PDF after
   // the initial render) don't hit "ArrayBuffer is already detached".
-  return getDocument({ data: new Uint8Array(bytes) }).promise
+  //
+  // Hardening flags: isEvalSupported=false blocks pdfjs from `eval`ing font
+  // programs (closes a class of CVEs around malicious PDFs). disableAutoFetch
+  // + disableStream disable speculative range fetches — we already have the
+  // bytes in memory, so there's nothing to fetch.
+  return getDocument({
+    data: new Uint8Array(bytes),
+    isEvalSupported: false,
+    disableAutoFetch: true,
+    disableStream: true,
+  }).promise
 }
 
 export async function getPageLayout(

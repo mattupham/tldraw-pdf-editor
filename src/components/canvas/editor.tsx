@@ -120,9 +120,16 @@ export default function Canvas({ children }: { children?: React.ReactNode }) {
 
   function handleMount(e: Editor) {
     setEditor(e)
-    // Test hook — lets E2E specs call editor APIs via window.__editor
-    // @ts-expect-error test-only
-    window.__editor = e
+    // Test hook — lets E2E specs drive tldraw via window.__editor. Gated so
+    // it never leaks into a real production bundle where a browser extension
+    // could use it. NEXT_PUBLIC_E2E=1 opts CI's prod build back in.
+    if (
+      process.env.NODE_ENV !== "production" ||
+      process.env.NEXT_PUBLIC_E2E === "1"
+    ) {
+      // @ts-expect-error test-only
+      window.__editor = e
+    }
   }
 
   return (
