@@ -8,18 +8,13 @@ type CanvasState =
   | { status: "empty" }
   | { status: "loading" }
   | { status: "loaded"; bytes: Uint8Array }
+  | { status: "error"; message: string }
 
 export function CanvasHost() {
   const [state, setState] = useState<CanvasState>({ status: "empty" })
 
-  async function handleFile(file: File) {
-    setState({ status: "loading" })
-    try {
-      const buf = await file.arrayBuffer()
-      setState({ status: "loaded", bytes: new Uint8Array(buf) })
-    } catch {
-      setState({ status: "empty" })
-    }
+  function handleFile(bytes: Uint8Array) {
+    setState({ status: "loaded", bytes })
   }
 
   async function handleExample() {
@@ -29,13 +24,27 @@ export function CanvasHost() {
       if (!res.ok) throw new Error(`fetch failed: ${res.status}`)
       const buf = await res.arrayBuffer()
       setState({ status: "loaded", bytes: new Uint8Array(buf) })
-    } catch {
-      setState({ status: "empty" })
+    } catch (err) {
+      setState({
+        status: "error",
+        message: err instanceof Error ? err.message : "Failed to load sample.",
+      })
     }
   }
 
-  if (state.status === "empty") {
-    return <PdfLoader onFile={handleFile} onExample={handleExample} />
+  function handleError(message: string) {
+    setState({ status: "error", message })
+  }
+
+  if (state.status === "empty" || state.status === "error") {
+    return (
+      <PdfLoader
+        onFile={handleFile}
+        onExample={handleExample}
+        onError={handleError}
+        error={state.status === "error" ? state.message : undefined}
+      />
+    )
   }
 
   if (state.status === "loading") {

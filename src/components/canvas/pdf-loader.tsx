@@ -4,18 +4,30 @@ import { Button } from "@/components/ui/button"
 import { useRef } from "react"
 
 interface PdfLoaderProps {
-  onFile: (file: File) => void
+  onFile: (bytes: Uint8Array) => void
   onExample: () => void
+  onError: (message: string) => void
+  error?: string
 }
 
-export function PdfLoader({ onFile, onExample }: PdfLoaderProps) {
+export function PdfLoader({
+  onFile,
+  onExample,
+  onError,
+  error,
+}: PdfLoaderProps) {
   const inputRef = useRef<HTMLInputElement>(null)
 
-  function handleFileChange(e: React.ChangeEvent<HTMLInputElement>) {
+  async function handleFileChange(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0]
     if (!file) return
-    onFile(file)
     e.target.value = ""
+    try {
+      const buf = await file.arrayBuffer()
+      onFile(new Uint8Array(buf))
+    } catch (err) {
+      onError(err instanceof Error ? err.message : "Failed to read file.")
+    }
   }
 
   return (
@@ -27,6 +39,7 @@ export function PdfLoader({ onFile, onExample }: PdfLoaderProps) {
             Load a file from your device or try a sample.
           </p>
         </div>
+        {error && <p className="text-sm text-destructive">{error}</p>}
         <div className="flex flex-col gap-2">
           <Button onClick={() => inputRef.current?.click()}>Open PDF</Button>
           <Button variant="outline" onClick={onExample}>
