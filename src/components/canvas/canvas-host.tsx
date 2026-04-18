@@ -3,6 +3,7 @@
 import { Skeleton } from "@/components/ui/skeleton"
 import { useState } from "react"
 import Canvas from "./editor"
+import { ExportButton } from "./export-button"
 import { PdfLoader } from "./pdf-loader"
 import { PdfShapes } from "./pdf-shapes"
 
@@ -65,6 +66,7 @@ export function CanvasHost() {
   return (
     <Canvas>
       <PdfShapes bytes={state.bytes} />
+      <ExportButton bytes={state.bytes} />
     </Canvas>
   )
 }
