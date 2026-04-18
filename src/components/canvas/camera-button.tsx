@@ -13,7 +13,7 @@ export function CameraButton() {
       variant="outline"
       size="icon"
       onClick={() => editor.setCurrentTool("camera")}
-      aria-label="Camera tool — drag to crop and export"
+      aria-label="Camera tool: drag to crop and export"
     >
       <Camera className="h-4 w-4" />
     </Button>

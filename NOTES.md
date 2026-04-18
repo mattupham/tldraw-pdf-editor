@@ -22,7 +22,7 @@ Not yet implemented in this PR.
 
 **`padding: 0` on `toImage`.** Default padding is 32 px which would make the export larger than the drawn rectangle. Set to 0 so the output matches the user's selection exactly.
 
-**OffscreenCanvas fallback.** If `OffscreenCanvas` is absent (older browsers) or `toImage` throws for any reason, `fallbackExport` uses `html-to-image` against `editor.getContainer()`. This captures the DOM representation including any overlay, so fidelity may be lower than the SVG pipeline.
+**`html-to-image` fallback.** If `toImage` throws for any reason (e.g. missing WebGL context), `fallbackExport` uses `html-to-image` against `editor.getContainer()`. Limitation: it captures the full canvas, not the cropped region — the user sees a toast noting this. Fidelity is also lower (DOM rasterization vs. tldraw's SVG pipeline).
 
 **`prefers-reduced-motion`.** The marching-ants SVG animation is wrapped in `@media (prefers-reduced-motion: no-preference)` in an inline `<style>` block so the animation is automatically suppressed without JavaScript media query logic.
 
