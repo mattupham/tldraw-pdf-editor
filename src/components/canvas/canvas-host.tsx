@@ -2,6 +2,7 @@
 
 import { Skeleton } from "@/components/ui/skeleton"
 import { useState } from "react"
+import { CameraButton } from "./camera-button"
 import Canvas from "./editor"
 import { ExportButton } from "./export-button"
 import { PdfLoader } from "./pdf-loader"
@@ -66,7 +67,12 @@ export function CanvasHost() {
   return (
     <Canvas>
       <PdfShapes bytes={state.bytes} />
-      <ExportButton bytes={state.bytes} />
+      <div className="pointer-events-none fixed inset-0 z-10">
+        <div className="pointer-events-auto absolute right-4 top-4 flex gap-2">
+          <CameraButton />
+          <ExportButton bytes={state.bytes} />
+        </div>
+      </div>
     </Canvas>
   )
 }

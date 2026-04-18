@@ -127,3 +127,15 @@
     @apply font-sans;
   }
 }
+
+@keyframes tl-camera-march {
+  to {
+    stroke-dashoffset: -24;
+  }
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .tl-camera-marquee {
+    animation: tl-camera-march 0.4s linear infinite;
+  }
+}

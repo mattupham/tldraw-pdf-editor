@@ -1,5 +1,7 @@
 "use client"
 
+import { CameraTool } from "@/tools/camera/camera-tool"
+import { CropOverlay } from "@/tools/camera/crop-overlay"
 import { PinShapeUtil } from "@/tools/pin/pin-shape-util"
 import { PinTool } from "@/tools/pin/pin-tool"
 import { usePinAttachment } from "@/tools/pin/use-pin-attachment"
@@ -17,8 +19,6 @@ import {
   useTools,
 } from "tldraw"
 
-// React Context is used so any descendant can call useEditor() without prop
-// drilling. The value is null until tldraw fires onMount.
 const EditorContext = createContext<Editor | null>(null)
 
 export function useEditor(): Editor | null {
@@ -26,7 +26,7 @@ export function useEditor(): Editor | null {
 }
 
 const customShapeUtils = [PinShapeUtil]
-const customTools = [PinTool]
+const customTools = [PinTool, CameraTool]
 
 const PIN_ICON_ID = "pin-tool-icon"
 
@@ -66,6 +66,7 @@ function PinToolbarItem() {
 }
 
 const components: TLComponents = {
+  InFrontOfTheCanvas: CropOverlay,
   Toolbar() {
     return (
       <DefaultToolbar>
