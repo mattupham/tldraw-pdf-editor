@@ -26,8 +26,6 @@ declare module "tldraw" {
 
 export const PIN_WIDTH = 24
 export const PIN_HEIGHT = 32
-export const PIN_HEAD_SIZE = 20
-const PIN_HEAD_OFFSET = (PIN_WIDTH - PIN_HEAD_SIZE) / 2
 
 export class PinShapeUtil extends ShapeUtil<TLPinShape> {
   static override type = "pin" as const
@@ -46,10 +44,10 @@ export class PinShapeUtil extends ShapeUtil<TLPinShape> {
 
   getGeometry() {
     return new Rectangle2d({
-      x: PIN_HEAD_OFFSET,
+      x: 0,
       y: 0,
-      width: PIN_HEAD_SIZE,
-      height: PIN_HEAD_SIZE,
+      width: PIN_WIDTH,
+      height: PIN_HEIGHT,
       isFilled: true,
     })
   }
@@ -69,13 +67,6 @@ export class PinShapeUtil extends ShapeUtil<TLPinShape> {
   }
 
   indicator() {
-    return (
-      <rect
-        x={PIN_HEAD_OFFSET}
-        y={0}
-        width={PIN_HEAD_SIZE}
-        height={PIN_HEAD_SIZE}
-      />
-    )
+    return <rect x={0} y={0} width={PIN_WIDTH} height={PIN_HEIGHT} />
   }
 }
