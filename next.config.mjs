@@ -1,13 +1,22 @@
 /** @type {import('next').NextConfig} */
 
-// Content Security Policy. pdfjs uses a dedicated worker served from /public,
-// tldraw applies inline styles from JS, and the worker does `wasm-unsafe-eval`
-// in some pdfjs code-paths. 'unsafe-inline' on scripts is only required by
-// Next.js in development (inline hydration scripts) — tightened for prod.
+// Content Security Policy.
+// - pdfjs renders in a dedicated worker served same-origin from /public, and
+//   its font/CMap loader takes a `wasm-unsafe-eval` code path.
+// - tldraw applies inline styles from JS (style-src 'unsafe-inline').
+// - Next.js ships inline bootstrap scripts — next-themes' color-scheme
+//   initializer and the RSC hydration pushes — that run before React
+//   hydration. Without nonces (which would require a `middleware.ts` that
+//   injects a per-request nonce and threads it to the CSP + Next.js) we have
+//   to allow 'unsafe-inline' on scripts. The rest of the policy (strict
+//   default-src, frame-ancestors 'none', explicit worker-src, img-src) still
+//   meaningfully narrows blast radius — this isn't a blanket opening.
+// - Dev additionally needs 'unsafe-eval' for Turbopack HMR.
 const scriptSrc = [
   "'self'",
+  "'unsafe-inline'",
   "'wasm-unsafe-eval'",
-  process.env.NODE_ENV === "development" ? "'unsafe-inline' 'unsafe-eval'" : "",
+  process.env.NODE_ENV === "development" ? "'unsafe-eval'" : "",
 ]
   .filter(Boolean)
   .join(" ")

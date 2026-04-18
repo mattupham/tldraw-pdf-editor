@@ -161,12 +161,14 @@ export function usePinAttachment(editor: Editor | null) {
             }))
           )
         })
-        // Sweep any entries whose afterChange did not consume them (validator
-        // rejection, shape deleted mid-flush, etc). Without this a stranded id
-        // would silently suppress that shape's next real drag.
-        for (const update of updates) {
-          propagatedIds.delete(update.id)
-        }
+        // Don't sweep propagatedIds after the run — tldraw's
+        // flushAtomicCallbacks drains pendingAfterEvents across several
+        // iterations of its while-loop. afterChange for shape B may fire in a
+        // *later* iteration than the one this run returned on. Deleting ids
+        // here would pull the token out from under that deferred handler and
+        // cause B's afterChange to look like a real drag, re-propagating into
+        // an infinite cascade. The consume-at-fire delete above is the right
+        // (and only) place to drain.
       }
     )
 
