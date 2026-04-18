@@ -137,6 +137,34 @@ describe("computePinUpdates", () => {
     expect(updates[0]?.id).toBe(pin.id)
   })
 
+  it("skips attached ids whose shapes no longer exist (stale ids)", () => {
+    // After a delete the side-effect prunes the id from each pin's set, but
+    // that pruning happens in the afterDelete handler — another afterChange
+    // handler running in the same tick could still see a stale id. The pure
+    // helper must skip those instead of emitting undefined moves.
+    const live: ShapeSnapshot = { id: id("live"), type: "geo", x: 0, y: 0 }
+    const moved: ShapeSnapshot = { id: id("moved"), type: "geo", x: 0, y: 0 }
+    const pin: PinSnapshot = {
+      id: id("pin1"),
+      x: 0,
+      y: 0,
+      attachedShapeIds: [moved.id, live.id, id("gone")],
+    }
+
+    const updates = computePinUpdates(
+      [pin],
+      moved.id,
+      3,
+      4,
+      makeLookup([moved, live])
+    )
+
+    // Pin + live shape only — the "gone" id is silently skipped.
+    expect(updates).toHaveLength(2)
+    expect(updates.find((u) => u.id === id("gone"))).toBeUndefined()
+    expect(xy(updates.find((u) => u.id === live.id))).toEqual({ x: 3, y: 4 })
+  })
+
   it("ignores pins whose attached set does not contain the moved shape", () => {
     const shape: ShapeSnapshot = { id: id("a"), type: "geo", x: 0, y: 0 }
     const other: ShapeSnapshot = { id: id("b"), type: "geo", x: 0, y: 0 }

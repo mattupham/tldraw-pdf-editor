@@ -13,12 +13,12 @@ export interface PinSnapshot {
 
 export interface ShapeSnapshot {
   id: TLShapeId
-  type: string
+  type: TLShape["type"]
   x: number
   y: number
 }
 
-export interface ShapeMove extends ShapeSnapshot {}
+export type ShapeMove = ShapeSnapshot
 
 // Module-level propagation guard. Lives outside React so it survives hook
 // remounts and stays shared across any concurrent handler invocations inside
@@ -119,7 +119,7 @@ export function usePinAttachment(editor: Editor | null) {
                 type: u.type,
                 x: u.x,
                 y: u.y,
-              })) as Parameters<typeof editor.updateShapes>[0]
+              }))
             )
           })
         } finally {

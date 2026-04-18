@@ -10,7 +10,7 @@ import {
 } from "tldraw"
 import { PinShape } from "./pin-shape"
 
-export interface TLPinShapeProps {
+export type TLPinShapeProps = {
   attachedShapeIds: TLShapeId[]
 }
 

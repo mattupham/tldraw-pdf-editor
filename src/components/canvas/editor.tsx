@@ -30,10 +30,12 @@ const customTools = [PinTool]
 
 const PIN_ICON_ID = "pin-tool-icon"
 
-// Inline SVG of the lucide MapPin, registered under an asset id so the tool
-// item's `icon: "pin-tool-icon"` resolves through tldraw's icon pipeline.
-// Rendering the icon via `assetUrls.icons` gets us the correct sizing /
-// coloring that tldraw applies to every other toolbar item.
+// Inline SVG of the lucide `MapPin` icon (lucide-react v1.8.0, see
+// node_modules/lucide-react/dist/esm/icons/map-pin.js), served as a data URL
+// through tldraw's `assetUrls.icons` pipeline. tldraw renders toolbar icons as
+// CSS masks, so the icon must come in as a single URL — rendering `<MapPin />`
+// as JSX would bypass that and lose the active-tool highlight styling. When
+// lucide publishes an updated MapPin, refresh the path data below.
 const assetUrls: TLUiAssetUrlOverrides = {
   icons: {
     [PIN_ICON_ID]: `data:image/svg+xml;utf8,${encodeURIComponent(
