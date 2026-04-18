@@ -1,4 +1,5 @@
 import { Geist_Mono, Inter } from "next/font/google"
+import { Toaster } from "sonner"
 
 import "./globals.css"
 import "tldraw/tldraw.css"
@@ -30,6 +31,7 @@ export default function RootLayout({
     >
       <body>
         <ThemeProvider>{children}</ThemeProvider>
+        <Toaster richColors />
       </body>
     </html>
   )

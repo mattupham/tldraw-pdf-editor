@@ -29,12 +29,8 @@ export function ExportButton({ bytes }: ExportButtonProps) {
   }
 
   return (
-    <div className="pointer-events-none fixed inset-0 z-10">
-      <div className="pointer-events-auto absolute right-4 top-4">
-        <Button onClick={handleExport} disabled={exporting}>
-          {exporting ? "Exporting…" : "Export PDF"}
-        </Button>
-      </div>
-    </div>
+    <Button onClick={handleExport} disabled={exporting}>
+      {exporting ? "Exporting…" : "Export PDF"}
+    </Button>
   )
 }
