@@ -19,8 +19,10 @@ export function ExportButton({ bytes }: ExportButtonProps) {
       const a = document.createElement("a")
       a.href = url
       a.download = "export.pdf"
+      document.body.appendChild(a)
       a.click()
-      URL.revokeObjectURL(url)
+      document.body.removeChild(a)
+      setTimeout(() => URL.revokeObjectURL(url), 100)
     } finally {
       setExporting(false)
     }
