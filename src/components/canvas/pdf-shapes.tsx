@@ -59,9 +59,7 @@ async function createPageShape(
 export function PdfShapes({ bytes, onError }: PdfShapesProps) {
   const editor = useEditor()
   const onErrorRef = useRef(onError)
-  useEffect(() => {
-    onErrorRef.current = onError
-  }, [onError])
+  onErrorRef.current = onError
 
   useEffect(() => {
     if (!editor) return
@@ -119,7 +117,15 @@ export function PdfShapes({ bytes, onError }: PdfShapesProps) {
                 page.y < vp.maxY &&
                 page.y + page.h > vp.minY
               ) {
-                renderAndCreate(i)
+                renderAndCreate(i).catch((err) => {
+                  if (!aborted) {
+                    onErrorRef.current?.(
+                      err instanceof Error
+                        ? err.message
+                        : "Failed to render page."
+                    )
+                  }
+                })
               }
             }
           }, 150)

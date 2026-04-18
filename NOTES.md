@@ -10,7 +10,7 @@
 
 ## Task 3 — Pin Tool
 
-Not yet implemented in this PR.
+Implemented in Phase 5 (PR #6). See `src/tools/pin/`.
 
 ## Task 4 — Camera Tool
 
@@ -34,7 +34,7 @@ Not yet implemented in this PR.
 
 **aria-label coverage.** Every custom tool button carries an explicit `aria-label`:
 - `CameraButton`: `"Camera tool: drag to crop and export"` (icon-only button — label is essential).
-- `ExportButton`: `aria-label` updates dynamically (`"Export PDF"` / `"Exporting PDF, please wait"`) with `aria-busy` set during the async export so screen readers announce the busy state.
+- `ExportButton`: `aria-label` updates dynamically (`"Export PDF"` / `"Exporting PDF, please wait"`) during the async export so screen readers announce the busy state. The button is also `disabled` during export, which is the standard mechanism for communicating non-interactivity.
 - Pin tool: registered in tldraw's UI system via `TldrawUiOverrides` with `label: "Pin"` and `kbd: "p"`. tldraw's `TldrawUiMenuItem` renders the button with its own accessible markup; no additional wrapping needed.
 
 **Keyboard reach.** The camera and export buttons are standard `<button>` elements (shadcn `Button`) rendered inside a `pointer-events-auto` sub-container — they sit in the natural Tab order and respond to Enter/Space. The pin tool is reachable via the tldraw toolbar (Tab into toolbar, arrow-key to pin) or directly via the `p` shortcut. Decorative SVGs (`PinShape`, `CropOverlay`) carry `aria-hidden="true"`.
