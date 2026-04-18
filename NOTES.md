@@ -57,7 +57,7 @@
 
 **Focus ring.** `TldrawUiButton` inherits tldraw's native focus styling — no override needed.
 
-**`prefers-reduced-motion`.** The marching-ants crop animation is already gated behind `@media (prefers-reduced-motion: no-preference)` in `globals.css`.
+**`prefers-reduced-motion`.** `globals.css` gates the marching-ants crop animation behind `@media (prefers-reduced-motion: no-preference)` and adds a global `prefers-reduced-motion: reduce` block that neutralises every animation + transition duration — covers the shadcn skeleton pulse and any future `animate-*` utilities without a per-component opt-in.
 
 ### PDF Error Handling
 
@@ -65,6 +65,16 @@
 
 ### Performance
 
-**No main-thread blocks > 50 ms.** PDF rasterization runs on `OffscreenCanvas` (off main thread). The first 10 pages render sequentially but each `renderPage` call yields between pages (async/await); remaining pages load lazily behind a 150 ms debounce on the store listener. The main thread is only touched for `editor.createAssets` / `editor.createShapes` calls, which are tldraw store writes and complete in < 1 ms each.
+**Main-thread budget.** PDF rasterization runs on `OffscreenCanvas` (off main thread). The first 10 pages render with a concurrency cap of 4; remaining pages load lazily behind a 150 ms debounce on the store listener. The main thread is only touched for `editor.createAssets` / `editor.createShapes` calls, which are tldraw store writes and complete in < 1 ms each. Measured ad-hoc via DevTools; not asserted in CI.
+
+**Asset memory.** Page assets route through `editor.uploadAsset()`, which in the default in-memory `TLAssetStore` returns a base64 data URL that tldraw holds for the asset's lifetime — memory scales with (page count × rasterized page size). A custom `TLAssetStore` that returned `asset:` URLs backed by `Blob`s (resolved to `URL.createObjectURL` on demand) would cut steady-state memory ~60%. Out of scope here; flagged for follow-up.
 
 **Browser targets.** Verified against latest Chrome, Safari, and Firefox. `OffscreenCanvas`, `structuredClone`, and dynamic `import()` are all baseline-supported; no polyfills added.
+
+### Security
+
+**Headers.** `next.config.mjs` ships a CSP (`default-src 'self'`, `script-src 'self' 'wasm-unsafe-eval'`, `worker-src 'self' blob:`, `frame-ancestors 'none'`), plus `X-Frame-Options: DENY`, `X-Content-Type-Options: nosniff`, `Referrer-Policy: strict-origin-when-cross-origin`, and a `Permissions-Policy` that denies camera/microphone/geolocation. Dev-mode loosens `script-src` for Next.js hydration.
+
+**pdfjs hardening.** `getDocument` is called with `isEvalSupported: false`, `disableAutoFetch: true`, `disableStream: true` to close the class of font-eval CVEs and disable speculative range fetches we don't need (the bytes are already in memory).
+
+**E2E hook is gated.** `window.__editor` only mounts when `process.env.NODE_ENV !== "production"` or `NEXT_PUBLIC_E2E === "1"`. CI sets the env at the job level so the prod bundle Playwright serves carries the hook; real production builds do not.
