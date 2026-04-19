@@ -5,7 +5,11 @@ A tldraw-powered canvas that loads a PDF as its backdrop and exposes two custom 
 - **Pin (📍)** — drop a pin on a cluster of overlapping shapes and the pin groups them, so dragging any member moves the whole set together.
 - **Camera** — drag a rectangular crop and export it as a PNG screenshot.
 
-Built for the H2 coding exercise. See [`SPEC.md`](./SPEC.md) for the full technical requirements and [`NOTES.md`](./NOTES.md) for per-task decision rationale.
+Built for the H2 coding exercise. See [`SPEC.md`](./SPEC.md) for the full technical requirements, [`NOTES.md`](./NOTES.md) for per-task decision rationale, and [`transcripts/`](./transcripts/) for the raw Claude Code sessions that built it.
+
+## Walkthrough video
+
+> **Link coming — recording in progress.** A short screen recording demonstrating each task end-to-end: opening a PDF, dropping a pin on overlapping shapes, dragging an attached shape, cropping a region with the camera tool, and exporting the annotated PDF.
 
 ## Stack
 
@@ -41,6 +45,8 @@ pnpm dev        # http://localhost:3000
 
 `postinstall` copies `pdfjs-dist`'s worker into `public/` so `GlobalWorkerOptions.workerSrc` can point at it.
 
+First-time Playwright runs need browser binaries: `pnpm exec playwright install`.
+
 ## Project layout
 
 ```
@@ -60,4 +66,14 @@ tests/e2e/                # Playwright specs (one per spec task)
 
 ## Design notes
 
-Read [`NOTES.md`](./NOTES.md) for the full decision log — trade-offs considered, alternatives rejected, and how the three "open questions" from `SPEC.md` §9 were resolved (pin orphaning, multi-shape overlap, crop scope).
+Read [`NOTES.md`](./NOTES.md) for the full decision log — trade-offs considered, alternatives rejected, and how the three "open questions" from `SPEC.md` §9 were resolved (pin orphaning, multi-shape overlap, crop scope). Cross-cutting concerns are broken out as their own sections:
+
+- [Accessibility](./NOTES.md#accessibility) — aria-labels, keyboard reach, `prefers-reduced-motion`, dark mode
+- [Performance](./NOTES.md#performance) — `OffscreenCanvas`, DPR cap, lazy layout, custom `TLAssetStore`, export concurrency
+- [Security](./NOTES.md#security) — per-request CSP nonce, pdfjs hardening, E2E hook gating
+- [Testing strategy](./NOTES.md#testing-strategy) — Vitest unit + Playwright E2E coverage map
+- [Developer ergonomics](./NOTES.md#developer-ergonomics) — Biome, absolute imports, strict TS, husky
+
+## AI transcripts
+
+Raw Claude Code session logs per phase live in [`transcripts/`](./transcripts/). The H2 README asks to commit them if AI tooling was used in the build — this project was built with Claude Code throughout.
