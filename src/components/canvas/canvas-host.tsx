@@ -2,31 +2,39 @@
 
 import { useState } from "react"
 import Canvas from "@/components/canvas/editor"
+import { ExportPdfProvider } from "@/components/canvas/export-pdf-button"
 import { PdfLoader } from "@/components/canvas/pdf-loader"
-import { PdfShapes } from "@/components/canvas/pdf-shapes"
+import { type PdfApi, PdfShapes } from "@/components/canvas/pdf-shapes"
 import { ThemeToggle } from "@/components/theme-toggle"
 import { Skeleton } from "@/components/ui/skeleton"
 
 type CanvasState =
   | { status: "empty" }
   | { status: "loading" }
-  | { status: "loaded"; bytes: Uint8Array }
+  | { status: "loaded"; bytes: Uint8Array; filename: string }
   | { status: "error"; message: string }
 
 export function CanvasHost() {
   const [state, setState] = useState<CanvasState>({ status: "empty" })
+  const [pdfApi, setPdfApi] = useState<PdfApi | null>(null)
 
-  function handleFile(bytes: Uint8Array) {
-    setState({ status: "loaded", bytes })
+  function handleFile(bytes: Uint8Array, filename: string) {
+    setPdfApi(null)
+    setState({ status: "loaded", bytes, filename })
   }
 
   async function handleExample() {
+    setPdfApi(null)
     setState({ status: "loading" })
     try {
       const res = await fetch("/sample.pdf")
       if (!res.ok) throw new Error(`fetch failed: ${res.status}`)
       const buf = await res.arrayBuffer()
-      setState({ status: "loaded", bytes: new Uint8Array(buf) })
+      setState({
+        status: "loaded",
+        bytes: new Uint8Array(buf),
+        filename: "sample.pdf",
+      })
     } catch (err) {
       setState({
         status: "error",
@@ -39,9 +47,11 @@ export function CanvasHost() {
     setState({ status: "error", message })
   }
 
-  // Single fixed-position overlay shared across every branch so the toggle
-  // stays put while the canvas state transitions.
-  const themeToggle = (
+  // Floating toggle used for empty/loading states where there's no canvas
+  // chrome to host it. In the loaded state the ThemeToggle lives inside
+  // tldraw's SharePanel (see editor.tsx) alongside the Export PDF button, so
+  // we don't render this one there to avoid a duplicate top-right button.
+  const floatingThemeToggle = (
     <div className="fixed right-3 top-3 z-50">
       <ThemeToggle />
     </div>
@@ -50,7 +60,7 @@ export function CanvasHost() {
   if (state.status === "empty" || state.status === "error") {
     return (
       <main>
-        {themeToggle}
+        {floatingThemeToggle}
         <PdfLoader
           onFile={handleFile}
           onExample={handleExample}
@@ -64,7 +74,7 @@ export function CanvasHost() {
   if (state.status === "loading") {
     return (
       <main className="flex min-h-svh items-center justify-center">
-        {themeToggle}
+        {floatingThemeToggle}
         <div
           role="status"
           aria-live="polite"
@@ -81,11 +91,16 @@ export function CanvasHost() {
   }
 
   return (
-    <main>
-      {themeToggle}
-      <Canvas>
-        <PdfShapes bytes={state.bytes} onError={handleError} />
-      </Canvas>
-    </main>
+    <ExportPdfProvider filename={state.filename} pdfApi={pdfApi}>
+      <main>
+        <Canvas>
+          <PdfShapes
+            bytes={state.bytes}
+            onError={handleError}
+            onReady={setPdfApi}
+          />
+        </Canvas>
+      </main>
+    </ExportPdfProvider>
   )
 }

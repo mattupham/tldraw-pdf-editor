@@ -79,7 +79,13 @@ src/
 - **Resolution cap** prevents OOM on huge documents.
 - **OffscreenCanvas** keeps rendering off the main thread.
 
-**Export PDF** uses `pdf-lib` to write the rendered images back into a PDF (one page per image). Simplest correct answer; an alternative is `editor.toImage()` per page then assemble — mention as a considered option.
+**Export PDF (required).** Top-right primary-blue button, visible only when a PDF is loaded.
+
+- **Scope.** Output includes the PDF pages **plus anything drawn on top within each page's rectangle**. Content that falls outside a page rectangle (stray shapes in the canvas margin, neighbours from adjacent pages that leak into the gutter) is excluded. This matches user intent: "export the document I'm looking at, with my annotations."
+- **Pipeline.** For each PDF page shape (tagged via `meta.pdfPageIndex` at creation time): call `editor.toImage(shapeIdsWithinPage, { bounds: pageBounds, format: 'png', background: true, pixelRatio: devicePixelRatio, padding: 0 })`. Pass shape IDs explicitly so neighbouring PDF pages are excluded even when their geometry overlaps the gutter. Assemble the resulting PNGs into a PDF with `pdf-lib` — one page per image, sized to the source page's dimensions.
+- **Force-render before export.** Lazy-loaded pages (beyond the initial 10) may not be rasterized yet. `PdfShapes` exposes `renderAll()` via an `onReady` callback; the export handler awaits it before building the PDF. A spinner in the button communicates the wait.
+- **Filename.** `<original>-annotated.pdf` (preserves the source name). If the user loaded via "Use an example," the source name is `sample.pdf`.
+- **Alternative considered:** overlaying vector annotations onto the source PDF (preserves text layer, selectable text). Rejected for v1 — more complex, and the raster-composite result matches what's on screen pixel-for-pixel.
 
 ---
 
@@ -90,7 +96,7 @@ src/
 **The pin shape:**
 
 - Extend `ShapeUtil<TLPinShape>` with a custom shape type `"pin"`.
-- Visually: a red pushpin SVG (≈24×32 px, anchored at the pin's tip). Not resizable, not rotatable, aspect-locked.
+- Visually: the 📍 emoji (rendered at 24×32 px, anchored at the pin's tip). Not resizable, not rotatable, aspect-locked. The emoji is used on canvas, in the toolbar, and in the SVG export pipeline (via a `toSvg()` override emitting an SVG `<text>` node) so Export PDF and camera-crop capture the pin correctly. Chosen over a custom SVG for platform-native rendering that tracks OS font updates; the trade-off is that the glyph is platform-specific (Apple's pushpin differs from Microsoft's).
 - `canEdit: false`, `hideResizeHandles: true`, `isAspectRatioLocked: true`.
 - `getGeometry` returns a small rectangle around the pin head for hit-testing.
 

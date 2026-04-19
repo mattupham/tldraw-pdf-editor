@@ -4,22 +4,53 @@ import { Camera } from "lucide-react"
 import { useTheme } from "next-themes"
 import { createContext, useContext, useEffect, useState } from "react"
 import {
+  ArrowDownToolbarItem,
+  ArrowLeftToolbarItem,
+  ArrowRightToolbarItem,
+  ArrowToolbarItem,
+  ArrowUpToolbarItem,
+  AssetToolbarItem,
+  CheckBoxToolbarItem,
+  CloudToolbarItem,
   DefaultToolbar,
-  DefaultToolbarContent,
+  DiamondToolbarItem,
+  DrawToolbarItem,
   type Editor,
+  EllipseToolbarItem,
+  EraserToolbarItem,
+  FrameToolbarItem,
+  HandToolbarItem,
+  HeartToolbarItem,
+  HexagonToolbarItem,
+  HighlightToolbarItem,
+  LaserToolbarItem,
+  LineToolbarItem,
+  NoteToolbarItem,
+  OvalToolbarItem,
+  RectangleToolbarItem,
+  RhombusToolbarItem,
+  SelectToolbarItem,
+  StarToolbarItem,
+  TextToolbarItem,
   type TLComponents,
   type TLUiOverrides,
   Tldraw,
   TldrawUiButton,
+  TrapezoidToolbarItem,
+  TriangleToolbarItem,
   useIsToolSelected,
   useTools,
+  XBoxToolbarItem,
 } from "tldraw"
+import { ExportPdfButton } from "@/components/canvas/export-pdf-button"
+import { ThemeToggle } from "@/components/theme-toggle"
 import {
   blobAssetStore,
   disposeBlobAssets,
 } from "@/lib/tldraw/blob-asset-store"
 import { CameraTool } from "@/tools/camera/camera-tool"
 import { CropOverlay } from "@/tools/camera/crop-overlay"
+import { usePdfProtection } from "@/tools/pdf/use-pdf-protection"
 import { PinShapeUtil } from "@/tools/pin/pin-shape-util"
 import { PinTool } from "@/tools/pin/pin-tool"
 import { usePinAttachment } from "@/tools/pin/use-pin-attachment"
@@ -101,22 +132,69 @@ function CameraToolbarItem() {
   )
 }
 
+// Render the ThemeToggle + Export PDF button together in tldraw's top-right
+// SharePanel slot. `pointer-events-auto` is required: tldraw's SharePanel
+// wrapper inherits the canvas's `pointer-events: none` so the canvas below
+// stays interactive — individual controls have to opt back in, otherwise
+// the tl-background div underneath intercepts clicks.
+function SharePanelContent() {
+  return (
+    <div className="pointer-events-auto flex items-center gap-2 p-2">
+      <ThemeToggle />
+      <ExportPdfButton />
+    </div>
+  )
+}
+
 const components: TLComponents = {
   InFrontOfTheCanvas: CropOverlay,
+  SharePanel: SharePanelContent,
+  // Explicit order puts camera + pin + rectangle early so they always fit
+  // the visible row; the remaining default tools trail behind and drop into
+  // the overflow chevron on narrow viewports, matching the reference mocks.
   Toolbar() {
     return (
       <DefaultToolbar>
         <CameraToolbarItem />
         <PinToolbarItem />
-        <DefaultToolbarContent />
+        <SelectToolbarItem />
+        <HandToolbarItem />
+        <DrawToolbarItem />
+        <EraserToolbarItem />
+        <ArrowToolbarItem />
+        <TextToolbarItem />
+        <RectangleToolbarItem />
+        <NoteToolbarItem />
+        <AssetToolbarItem />
+        <EllipseToolbarItem />
+        <TriangleToolbarItem />
+        <DiamondToolbarItem />
+        <HexagonToolbarItem />
+        <OvalToolbarItem />
+        <RhombusToolbarItem />
+        <TrapezoidToolbarItem />
+        <StarToolbarItem />
+        <CloudToolbarItem />
+        <HeartToolbarItem />
+        <XBoxToolbarItem />
+        <CheckBoxToolbarItem />
+        <ArrowLeftToolbarItem />
+        <ArrowUpToolbarItem />
+        <ArrowDownToolbarItem />
+        <ArrowRightToolbarItem />
+        <LineToolbarItem />
+        <HighlightToolbarItem />
+        <LaserToolbarItem />
+        <FrameToolbarItem />
       </DefaultToolbar>
     )
   },
 }
 
-function AttachmentBridge() {
+function Bridges() {
   const editor = useEditor()
   usePinAttachment(editor)
+  usePdfProtection(editor)
   return null
 }
 
@@ -144,8 +222,7 @@ export default function Canvas({ children }: { children?: React.ReactNode }) {
     setEditor(e)
     // Test hook — lets E2E specs drive tldraw via window.__editor. Gated so
     // it never leaks into a real production bundle where a browser extension
-    // could use it. NEXT_PUBLIC_E2E=1 opts CI's prod build back in. The
-    // Window augmentation lives in src/types/window.d.ts.
+    // could use it. NEXT_PUBLIC_E2E=1 opts CI's prod build back in.
     if (
       process.env.NODE_ENV !== "production" ||
       process.env.NEXT_PUBLIC_E2E === "1"
@@ -176,7 +253,7 @@ export default function Canvas({ children }: { children?: React.ReactNode }) {
           assets={blobAssetStore}
         />
       </div>
-      <AttachmentBridge />
+      <Bridges />
       <ColorSchemeBridge />
       {children}
     </EditorContext.Provider>

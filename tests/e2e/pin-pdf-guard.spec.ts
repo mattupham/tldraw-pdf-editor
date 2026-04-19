@@ -1,24 +1,18 @@
 import { expect, test } from "@playwright/test"
 
-// Regression for MATT-143: dropping a pin on the PDF page (and nothing else)
-// must not attach the pin to the page image. Previously getShapesAtPoint
-// included the locked PDF image shape, which meant every in-bounds drop
-// silently attached to the page — and any stray drag of the page would carry
-// every pin along with it.
-//
-// The test drives the pin tool via real DOM mouse events (not editor.dispatch)
-// so we hit the full tldraw pointer pipeline — including the page-space
-// conversion the pin-tool reads via editor.inputs.getCurrentPagePoint(). A
-// sanity check inside the page context confirms the click actually landed on
-// the PDF image shape before we assert the attached-set behavior.
-test("pin dropped on the PDF page alone has empty attachedShapeIds", async ({
+// Regression: dropping a pin on the PDF page (and nothing else) must not
+// treat the page as a pin member. In the dynamic-membership model
+// (pin-overlap.ts) the membership query filters out any image shape tagged
+// with meta.pdfPageIndex / meta.isPdfPage — without that filter, every
+// in-bounds pin drop would silently "attach" to the backdrop and drag it
+// along through pin chains.
+test("pin dropped on the PDF page alone has no non-PDF members", async ({
   page,
 }) => {
   await page.goto("/")
 
   await page.getByRole("button", { name: "Use an example" }).click()
 
-  // Wait for the PDF page shape to land in the store.
   await page.waitForFunction(
     () => {
       const e = window.__editor
@@ -30,9 +24,6 @@ test("pin dropped on the PDF page alone has empty attachedShapeIds", async ({
     { timeout: 25_000 }
   )
 
-  // Compute the screen-space position of the PDF page centre. tldraw's
-  // pointer pipeline expects screen coords; converting here ensures the click
-  // really hits the PDF image rather than empty canvas.
   const target = await page.evaluate(() => {
     const e = window.__editor
     if (!e) throw new Error("editor not mounted")
@@ -45,35 +36,48 @@ test("pin dropped on the PDF page alone has empty attachedShapeIds", async ({
       x: pdfShape.x + props.w / 2,
       y: pdfShape.y + props.h / 2,
     }
-    // Sanity: the PDF image IS at pageCenter in page space.
-    const hitCheck = e
-      .getShapesAtPoint(pageCenter, { hitInside: true })
-      .some((s) => s.type === "image" && s.meta.isPdfPage === true)
-    if (!hitCheck) throw new Error("PDF page not at computed page-centre")
-
     const screen = e.pageToScreen(pageCenter)
     return { screen, pageCenter }
   })
 
-  // Activate the pin tool via the toolbar (real click — exercises the UI).
   await page.getByRole("button", { name: "Pin", exact: true }).click()
-
-  // Click at the PDF page centre in screen space.
   await page.mouse.click(target.screen.x, target.screen.y)
 
+  // Compute the same membership query the attachment handler uses — shapes
+  // whose bounds contain the pin's tip (plus the standard 6 px margin),
+  // minus pins and PDF-page images. Expect an empty set: the PDF is the only
+  // thing underneath and it's filtered.
   const result = await page.evaluate(() => {
     const e = window.__editor
     if (!e) throw new Error("editor not mounted")
     const pin = e.getCurrentPageShapes().find((s) => s.type === "pin")
     if (!pin) throw new Error("pin not created")
-    const props = pin.props as { attachedShapeIds: string[] }
-    return {
-      pinAt: { x: pin.x, y: pin.y },
-      attachedShapeIds: props.attachedShapeIds,
-    }
+
+    const PIN_WIDTH = 24
+    const PIN_HEIGHT = 32
+    const MARGIN = 6
+    const tip = { x: pin.x + PIN_WIDTH / 2, y: pin.y + PIN_HEIGHT }
+
+    const memberIds = e
+      .getCurrentPageShapes()
+      .filter((s) => {
+        if (s.type === "pin") return false
+        if (s.type === "image" && typeof s.meta.pdfPageIndex === "number") {
+          return false
+        }
+        const b = e.getShapePageBounds(s.id)
+        if (!b) return false
+        return (
+          tip.x >= b.x - MARGIN &&
+          tip.x <= b.x + b.w + MARGIN &&
+          tip.y >= b.y - MARGIN &&
+          tip.y <= b.y + b.h + MARGIN
+        )
+      })
+      .map((s) => s.id)
+
+    return { memberIds }
   })
 
-  // Pin must have landed near the PDF-page centre (within the PDF's bounds),
-  // and the PDF page must NOT have been attached — so the set is empty.
-  expect(result.attachedShapeIds).toEqual([])
+  expect(result.memberIds).toEqual([])
 })

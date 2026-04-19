@@ -1,4 +1,4 @@
-import { createShapeId, StateNode, type TLShapeId } from "tldraw"
+import { createShapeId, StateNode } from "tldraw"
 import {
   PIN_HEIGHT,
   PIN_WIDTH,
@@ -15,23 +15,18 @@ export class PinTool extends StateNode {
   override onPointerDown = () => {
     const { editor } = this
     const point = editor.inputs.getCurrentPagePoint()
-    // Skip pins (we don't attach pins to pins) and the PDF-page image shapes
-    // — those are locked backdrops; attaching to them would let a stray drag
-    // of the page drag every pin on it. shape.meta is guaranteed by tldraw
-    // to be a JsonObject (never undefined), so no optional chaining needed.
-    const nonPinShapes = editor
-      .getShapesAtPoint(point, { hitInside: true })
-      .filter((shape) => shape.type !== "pin" && !shape.meta.isPdfPage)
-
-    const attachedShapeIds: TLShapeId[] = nonPinShapes.map((shape) => shape.id)
-
+    // Dynamic membership: the pin itself carries no attachment state. Its
+    // "group" is computed on every drag from "which shapes contain the pin's
+    // tip right now?" (see use-pin-attachment.ts). This means dropping a 3rd
+    // shape onto an existing pin automatically joins the group, and PDF
+    // page images are skipped in the query so pins never grab the backdrop.
     editor.markHistoryStoppingPoint("create pin")
     editor.createShape<TLPinShape>({
       id: createShapeId(),
       type: "pin",
       x: point.x - PIN_WIDTH / 2,
       y: point.y - PIN_HEIGHT,
-      props: { attachedShapeIds },
+      props: {},
     })
     editor.setCurrentTool("select")
   }
