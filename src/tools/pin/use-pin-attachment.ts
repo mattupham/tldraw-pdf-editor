@@ -139,34 +139,53 @@ function arrowBoundToSibling(
   return false
 }
 
-// Every pin on the current page → the shapes currently under its tip. The
-// caller hands in the moved shape's pre-membership bounds (drag-start snapshot
-// during a translate, else prev-tick bounds). Membership for the moved shape
-// is decided purely by those bounds — not by its current geometry — so a
-// shape that slides into the pin area mid-drag is NOT treated as a member
-// until the user releases and starts a new drag. For siblings, current
-// geometry is fine (they haven't moved yet during this afterChange).
-function buildPinGroups(
+// Dynamic-membership build. Used OUTSIDE a select.translating gesture —
+// programmatic updateShapes, keyboard nudges, undo/redo. Membership is
+// re-evaluated on every tick from current geometry. The caller hands in the
+// moved shape's prev-tick bounds so we can re-add it to a group whose tip
+// sat inside the pre-move geometry (the shape may have slid out from under
+// the tip by the time we query current bounds).
+function buildPinGroupsDynamic(
   editor: Editor,
   movedId: TLShapeId,
-  preMembershipBounds: PinBounds | undefined
+  prevBounds: PinBounds | undefined
 ): PinGroupInput[] {
   const groups: PinGroupInput[] = []
   for (const shape of editor.getCurrentPageShapes()) {
     if (shape.type !== "pin") continue
     const tip = pinTipPoint(shape)
-    const membersNow = findShapesUnderPinTip(editor, tip).filter(
-      (id) => id !== movedId
-    )
+    const membersNow = findShapesUnderPinTip(editor, tip)
     if (
-      preMembershipBounds &&
-      pointInBounds(tip, preMembershipBounds, PIN_HIT_MARGIN)
+      prevBounds &&
+      pointInBounds(tip, prevBounds, PIN_HIT_MARGIN) &&
+      !membersNow.includes(movedId)
     ) {
       membersNow.push(movedId)
     }
     groups.push({
       pin: { id: shape.id, x: shape.x, y: shape.y },
       membersNow,
+    })
+  }
+  return groups
+}
+
+// Snapshot-driven build. Used DURING a select.translating gesture so
+// membership is frozen at drag start: a shape that slides INTO a pin area
+// isn't picked up mid-drag (MATT-146), and a pre-drag member stays a member
+// no matter how far the group has translated. Pre-drag members propagate
+// forever-in-lockstep; non-members can't gatecrash.
+function buildPinGroupsFromSnapshot(
+  editor: Editor,
+  preDragMembersByPin: ReadonlyMap<TLShapeId, ReadonlySet<TLShapeId>>
+): PinGroupInput[] {
+  const groups: PinGroupInput[] = []
+  for (const shape of editor.getCurrentPageShapes()) {
+    if (shape.type !== "pin") continue
+    const snap = preDragMembersByPin.get(shape.id)
+    groups.push({
+      pin: { id: shape.id, x: shape.x, y: shape.y },
+      membersNow: snap ? Array.from(snap) : [],
     })
   }
   return groups
@@ -182,16 +201,42 @@ export function usePinAttachment(editor: Editor | null) {
     // propagated ID lets us consume the token exactly at afterChange time.
     const propagatedIds = new Set<TLShapeId>()
 
-    // Drag-start bounds per shape, snapshotted on the first afterChange of a
-    // select.translating gesture. Used so a shape that slides INTO a pin area
-    // mid-drag isn't treated as an instant group member — membership is
-    // locked to the bounds at gesture start. Cleared when translating ends
-    // (the react subscription below); next drag re-snapshots from scratch.
-    const translateStartBoundsByShape = new Map<TLShapeId, PinBounds>()
+    // Pre-drag pin membership snapshot: pin.id → set of shape IDs that sat
+    // under its tip when the current select.translating gesture began. We
+    // lock membership to this snapshot for the whole gesture so:
+    //   (a) a shape sliding INTO a pin area mid-drag is NOT treated as an
+    //       instant group member (MATT-146);
+    //   (b) a pre-drag member stays a member however far the group has
+    //       translated — comparing current bounds/tips asymmetrically lets
+    //       members drop out when the group moves far enough that the
+    //       snapshot bounds no longer contain the current tip.
+    // Cleared on translating exit so the next drag re-evaluates membership
+    // from the new rest state (and picks up shapes that joined last drag).
+    const preDragPinMembers = new Map<TLShapeId, Set<TLShapeId>>()
+    let wasTranslating = false
 
+    // `react` tracks atoms read inside the callback; after the first
+    // snapshot we early-return on subsequent runs so only the
+    // `isIn("select.translating")` atom is re-tracked — shape-motion
+    // changes don't keep re-firing the effect.
     const disposeReact = react("pin-translate-session", () => {
-      if (!editor.isIn("select.translating")) {
-        translateStartBoundsByShape.clear()
+      const isTranslating = editor.isIn("select.translating")
+      if (!isTranslating) {
+        if (wasTranslating) preDragPinMembers.clear()
+        wasTranslating = false
+        return
+      }
+      if (wasTranslating) return
+      wasTranslating = true
+      // At this moment (transition from idle → translating) no shape has
+      // moved yet, so findShapesUnderPinTip reads pre-drag geometry.
+      for (const shape of editor.getCurrentPageShapes()) {
+        if (shape.type !== "pin") continue
+        const tip = pinTipPoint(shape)
+        preDragPinMembers.set(
+          shape.id,
+          new Set(findShapesUnderPinTip(editor, tip))
+        )
       }
     })
 
@@ -246,26 +291,18 @@ export function usePinAttachment(editor: Editor | null) {
         // tests) also run under the select tool — all must still propagate.
         if (editor.getCurrentToolId() !== "select") return
 
-        // Snapshot drag-start bounds on the first tick of a translating
-        // gesture. prevBounds at this point is the shape's geometry before
-        // this tick's change, which on tick 1 IS the pre-drag state. The
-        // snapshot freezes membership for the whole gesture: a shape that
-        // slides into a pin area is NOT treated as a member until drop +
-        // next drag.
-        if (
-          editor.isIn("select.translating") &&
-          !translateStartBoundsByShape.has(next.id) &&
-          prevBounds
-        ) {
-          translateStartBoundsByShape.set(next.id, prevBounds)
-        }
-
         const delta = readTranslateDelta(prev, next, prevBounds, nextBounds)
         if (!delta) return
 
-        const preMembershipBounds =
-          translateStartBoundsByShape.get(next.id) ?? prevBounds
-        const groups = buildPinGroups(editor, next.id, preMembershipBounds)
+        // During a translate gesture, membership is locked to the drag-start
+        // snapshot so a sliding-in shape can't gatecrash the group and a
+        // pre-drag member can't drop out as the group moves. Outside the
+        // gesture (programmatic updates, nudges) we stay on the dynamic
+        // model — those are single-tick updates where re-evaluating on each
+        // tick gives the right answer.
+        const groups = editor.isIn("select.translating")
+          ? buildPinGroupsFromSnapshot(editor, preDragPinMembers)
+          : buildPinGroupsDynamic(editor, next.id, prevBounds)
         if (groups.length === 0) return
 
         const updates = computePinUpdates(
@@ -311,7 +348,10 @@ export function usePinAttachment(editor: Editor | null) {
       "shape",
       (deleted) => {
         lastBoundsByShape.delete(deleted.id)
-        translateStartBoundsByShape.delete(deleted.id)
+        preDragPinMembers.delete(deleted.id)
+        for (const memberSet of preDragPinMembers.values()) {
+          memberSet.delete(deleted.id)
+        }
       }
     )
 
