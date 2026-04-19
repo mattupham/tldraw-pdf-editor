@@ -65,7 +65,9 @@ test("drawing a new shape across a pin doesn't drag the pinned group", async ({
     })()
 
     e.setCurrentTool("geo")
-    // Seed C off to the side so it doesn't already cover the pin tip.
+    // createShape fires afterCreate, not afterChange — the handler under
+    // test only sees the subsequent updateShape. Seed C clear of the pin
+    // tip so the create itself couldn't even have grabbed the group.
     e.createShape({
       id: ids.cId as never,
       type: "geo",
@@ -143,4 +145,181 @@ test("drawing a new shape across a pin doesn't drag the pinned group", async ({
   expect(afterRelease.aDelta).toEqual({ x: 30, y: 15 })
   expect(afterRelease.bDelta).toEqual({ x: 30, y: 15 })
   expect(afterRelease.pinDelta).toEqual({ x: 30, y: 15 })
+})
+
+// Locks in the broader-gate choice (tool-id === "select" rather than
+// isIn("select.translating")): keyboard arrow-key nudges fire in
+// select.idle, not select.translating, and must still propagate to the
+// whole pin group.
+test("keyboard arrow nudge of a pinned shape moves the whole group", async ({
+  page,
+}) => {
+  await page.goto("/")
+  await page.getByRole("button", { name: "Use an example" }).click()
+  await expect(page.locator(".tl-canvas")).toBeVisible({ timeout: 20_000 })
+  await page.waitForFunction(() => !!window.__editor, { timeout: 15_000 })
+
+  const ids = await page.evaluate(() => {
+    const e = window.__editor
+    if (!e) throw new Error("editor not mounted")
+    const ts = Date.now()
+    const aId = `shape:kn-a-${ts}`
+    const bId = `shape:kn-b-${ts}`
+    const pinId = `shape:kn-pin-${ts}`
+    e.createShape({
+      id: aId as never,
+      type: "geo",
+      x: 300,
+      y: 300,
+      props: { geo: "rectangle", w: 120, h: 100 },
+    })
+    e.createShape({
+      id: bId as never,
+      type: "geo",
+      x: 340,
+      y: 330,
+      props: { geo: "rectangle", w: 120, h: 100 },
+    })
+    // Pin tip = (pin.x + 12, pin.y + 32) = (372, 380) — inside both rects.
+    e.createShape({
+      id: pinId as never,
+      type: "pin",
+      x: 360,
+      y: 348,
+      props: {},
+    })
+    e.setCurrentTool("select")
+    e.select(aId as never)
+    return { aId, bId, pinId }
+  })
+
+  // Focus the canvas so the ArrowRight keypress reaches tldraw's handlers
+  // (otherwise the key lands on <body> and nudge never fires). Going
+  // through the a11y skip-link is flaky because it's visually out of the
+  // viewport; focus the container div directly.
+  await page.evaluate(() => {
+    const canvas = document.querySelector<HTMLElement>(".tl-container")
+    if (!canvas) throw new Error("tldraw container missing")
+    canvas.focus()
+  })
+  await page.keyboard.press("ArrowRight")
+
+  const result = await page.evaluate((ids) => {
+    const e = window.__editor
+    if (!e) throw new Error("editor not mounted")
+    const a = e.getShape(ids.aId as never)
+    const b = e.getShape(ids.bId as never)
+    const pin = e.getShape(ids.pinId as never)
+    if (!a || !b || !pin) throw new Error("missing")
+    return {
+      aDelta: { x: a.x - 300, y: a.y - 300 },
+      bDelta: { x: b.x - 340, y: b.y - 330 },
+      pinDelta: { x: pin.x - 360, y: pin.y - 348 },
+    }
+  }, ids)
+
+  // tldraw's default arrow-key nudge is a positive integer on the x axis.
+  // We assert the sibling + pin deltas match A's delta exactly (no drift)
+  // and that no y movement leaked in.
+  expect(result.aDelta.x).toBeGreaterThan(0)
+  expect(result.aDelta.y).toBe(0)
+  expect(result.bDelta).toEqual(result.aDelta)
+  expect(result.pinDelta).toEqual(result.aDelta)
+})
+
+// Belt-and-suspenders: exercise the full pointer pipeline. Activate the
+// rectangle tool via its toolbar button and drag a rectangle that crosses
+// the pin tip mid-gesture. The guard must still short-circuit propagation
+// because the current tool id is "geo" during the gesture.
+test("real mouse drag: drawing a rectangle across the pin keeps siblings put", async ({
+  page,
+}) => {
+  await page.goto("/")
+  await page.getByRole("button", { name: "Use an example" }).click()
+  await expect(page.locator(".tl-canvas")).toBeVisible({ timeout: 20_000 })
+  await page.waitForFunction(() => !!window.__editor, { timeout: 15_000 })
+
+  const ids = await page.evaluate(() => {
+    const e = window.__editor
+    if (!e) throw new Error("editor not mounted")
+    const ts = Date.now()
+    const aId = `shape:mc-a-${ts}`
+    const bId = `shape:mc-b-${ts}`
+    const pinId = `shape:mc-pin-${ts}`
+    e.createShape({
+      id: aId as never,
+      type: "geo",
+      x: 600,
+      y: 600,
+      props: { geo: "rectangle", w: 160, h: 120 },
+    })
+    e.createShape({
+      id: bId as never,
+      type: "geo",
+      x: 640,
+      y: 620,
+      props: { geo: "rectangle", w: 160, h: 120 },
+    })
+    // Pin tip = (pin.x + 12, pin.y + 32) = (672, 680) — inside both rects.
+    e.createShape({
+      id: pinId as never,
+      type: "pin",
+      x: 660,
+      y: 648,
+      props: {},
+    })
+    return { aId, bId, pinId }
+  })
+
+  const coords = await page.evaluate(() => {
+    const e = window.__editor
+    if (!e) throw new Error("editor not mounted")
+    // Start clear of the pin tip (672,680), drag down-right so final
+    // bounds enclose it. The mid point stays outside the pin tip; the end
+    // point crosses it.
+    return {
+      start: e.pageToScreen({ x: 420, y: 420 }),
+      mid: e.pageToScreen({ x: 560, y: 560 }),
+      end: e.pageToScreen({ x: 780, y: 780 }),
+    }
+  })
+
+  // The rectangle toolbar button lives behind tldraw's overflow popup in
+  // this project's layout. Activate the geo tool directly — the pointer
+  // pipeline below still drives the real state machine (pointing_shape →
+  // creating → idle on pointerup).
+  await page.evaluate(() => {
+    const e = window.__editor
+    if (!e) throw new Error("editor not mounted")
+    e.setCurrentTool("geo")
+  })
+
+  await page.mouse.move(coords.start.x, coords.start.y)
+  await page.mouse.down()
+  await page.mouse.move(coords.mid.x, coords.mid.y, { steps: 4 })
+  await page.mouse.move(coords.end.x, coords.end.y, { steps: 6 })
+
+  // Before pointerup: current tool is still "geo" and its x/y/w/h are
+  // changing tick by tick. Assert the pinned siblings stayed put.
+  const midDrag = await page.evaluate((ids) => {
+    const e = window.__editor
+    if (!e) throw new Error("editor not mounted")
+    const a = e.getShape(ids.aId as never)
+    const b = e.getShape(ids.bId as never)
+    const pin = e.getShape(ids.pinId as never)
+    if (!a || !b || !pin) throw new Error("missing")
+    return {
+      toolId: e.getCurrentToolId(),
+      a: { x: a.x, y: a.y },
+      b: { x: b.x, y: b.y },
+      pin: { x: pin.x, y: pin.y },
+    }
+  }, ids)
+
+  expect(midDrag.toolId).not.toBe("select")
+  expect(midDrag.a).toEqual({ x: 600, y: 600 })
+  expect(midDrag.b).toEqual({ x: 640, y: 620 })
+  expect(midDrag.pin).toEqual({ x: 660, y: 648 })
+
+  await page.mouse.up()
 })
