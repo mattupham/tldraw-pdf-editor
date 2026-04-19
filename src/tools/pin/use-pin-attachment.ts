@@ -220,6 +220,15 @@ export function usePinAttachment(editor: Editor | null) {
           return
         }
 
+        // Only propagate while the select tool is active. While a non-select
+        // tool is creating a shape, its x/y can change tick-to-tick without
+        // w/h changing — readTranslateDelta reads that as a real translate
+        // and drags the pin group along with the still-being-drawn shape.
+        // Broader than isIn("select.translating") on purpose: keyboard arrow-
+        // nudges fire in select.idle, and programmatic moves (undo, paste,
+        // tests) also run under the select tool — all must still propagate.
+        if (editor.getCurrentToolId() !== "select") return
+
         const delta = readTranslateDelta(prev, next, prevBounds, nextBounds)
         if (!delta) return
 
