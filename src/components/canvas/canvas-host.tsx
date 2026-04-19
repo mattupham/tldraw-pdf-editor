@@ -4,6 +4,7 @@ import { useState } from "react"
 import Canvas from "@/components/canvas/editor"
 import { PdfLoader } from "@/components/canvas/pdf-loader"
 import { PdfShapes } from "@/components/canvas/pdf-shapes"
+import { ThemeToggle } from "@/components/theme-toggle"
 import { Skeleton } from "@/components/ui/skeleton"
 
 type CanvasState =
@@ -38,9 +39,18 @@ export function CanvasHost() {
     setState({ status: "error", message })
   }
 
+  // Single fixed-position overlay shared across every branch so the toggle
+  // stays put while the canvas state transitions.
+  const themeToggle = (
+    <div className="fixed right-3 top-3 z-50">
+      <ThemeToggle />
+    </div>
+  )
+
   if (state.status === "empty" || state.status === "error") {
     return (
       <main>
+        {themeToggle}
         <PdfLoader
           onFile={handleFile}
           onExample={handleExample}
@@ -54,6 +64,7 @@ export function CanvasHost() {
   if (state.status === "loading") {
     return (
       <main className="flex min-h-svh items-center justify-center">
+        {themeToggle}
         <div
           role="status"
           aria-live="polite"
@@ -71,6 +82,7 @@ export function CanvasHost() {
 
   return (
     <main>
+      {themeToggle}
       <Canvas>
         <PdfShapes bytes={state.bytes} onError={handleError} />
       </Canvas>

@@ -1,7 +1,8 @@
 "use client"
 
 import { Camera } from "lucide-react"
-import { createContext, useContext, useState } from "react"
+import { useTheme } from "next-themes"
+import { createContext, useContext, useEffect, useState } from "react"
 import {
   DefaultToolbar,
   DefaultToolbarContent,
@@ -115,6 +116,23 @@ function AttachmentBridge() {
   return null
 }
 
+// Mirrors next-themes' resolved theme into tldraw's own colorScheme user
+// preference so the canvas chrome (toolbar, panels) stays in lockstep with
+// the rest of the app. next-themes already drives the `.dark` class on
+// <html>; tldraw's panels don't read that — they read editor.user prefs.
+function ColorSchemeBridge() {
+  const editor = useEditor()
+  const { resolvedTheme } = useTheme()
+
+  useEffect(() => {
+    if (!editor) return
+    if (resolvedTheme !== "light" && resolvedTheme !== "dark") return
+    editor.user.updateUserPreferences({ colorScheme: resolvedTheme })
+  }, [editor, resolvedTheme])
+
+  return null
+}
+
 export default function Canvas({ children }: { children?: React.ReactNode }) {
   const [editor, setEditor] = useState<Editor | null>(null)
 
@@ -144,6 +162,7 @@ export default function Canvas({ children }: { children?: React.ReactNode }) {
         />
       </div>
       <AttachmentBridge />
+      <ColorSchemeBridge />
       {children}
     </EditorContext.Provider>
   )
