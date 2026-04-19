@@ -133,11 +133,13 @@ function CameraToolbarItem() {
 }
 
 // Render the ThemeToggle + Export PDF button together in tldraw's top-right
-// SharePanel slot. Grouping them here avoids a collision with a separate
-// fixed top-right toggle, and keeps canvas-only UI inside the canvas chrome.
+// SharePanel slot. `pointer-events-auto` is required: tldraw's SharePanel
+// wrapper inherits the canvas's `pointer-events: none` so the canvas below
+// stays interactive — individual controls have to opt back in, otherwise
+// the tl-background div underneath intercepts clicks.
 function SharePanelContent() {
   return (
-    <div className="flex items-center gap-2 p-2">
+    <div className="pointer-events-auto flex items-center gap-2 p-2">
       <ThemeToggle />
       <ExportPdfButton />
     </div>
