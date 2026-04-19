@@ -61,17 +61,15 @@ export function ExportPdfButton() {
   }
 
   return (
-    <div className="pointer-events-auto p-2">
-      <Button onClick={handleClick} disabled={disabled} aria-label="Export PDF">
-        {isExporting ? (
-          <>
-            <Loader2 className="animate-spin" aria-hidden="true" />
-            Exporting…
-          </>
-        ) : (
-          "Export PDF"
-        )}
-      </Button>
-    </div>
+    <Button onClick={handleClick} disabled={disabled} aria-label="Export PDF">
+      {isExporting ? (
+        <>
+          <Loader2 className="animate-spin" aria-hidden="true" />
+          Exporting…
+        </>
+      ) : (
+        "Export PDF"
+      )}
+    </Button>
   )
 }

@@ -18,7 +18,8 @@ export class PinTool extends StateNode {
     // Dynamic membership: the pin itself carries no attachment state. Its
     // "group" is computed on every drag from "which shapes contain the pin's
     // tip right now?" (see use-pin-attachment.ts). This means dropping a 3rd
-    // shape on top of an existing pin automatically joins the group.
+    // shape onto an existing pin automatically joins the group, and PDF
+    // page images are skipped in the query so pins never grab the backdrop.
     editor.markHistoryStoppingPoint("create pin")
     editor.createShape<TLPinShape>({
       id: createShapeId(),

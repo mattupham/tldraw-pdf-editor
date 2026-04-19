@@ -9,7 +9,6 @@ import {
   pinTipPoint,
   pointInBounds,
 } from "@/tools/pin/pin-overlap"
-import type { TLPinShape } from "@/tools/pin/pin-shape-util"
 
 export interface ShapeMove {
   id: TLShapeId
@@ -18,19 +17,20 @@ export interface ShapeMove {
   y: number
 }
 
-// Pure propagation helper. Given a moved shape + its delta, the set of pins
-// that were attached to it *before* the move, and the other shapes currently
-// under each of those pins, returns the list of sibling + pin moves to apply.
-// Each affected record is emitted once even when multiple pins overlap the
-// same sibling.
+// Input to the pure propagation helper — one entry per pin on the canvas
+// with the shapes currently under its tip. The caller is responsible for
+// re-adding the moved shape to a group's `membersNow` when its pre-move
+// bounds contained the pin's tip but its current bounds no longer do (it
+// may have slid out while the user was dragging).
 export interface PinGroupInput {
   pin: { id: TLShapeId; x: number; y: number }
-  // IDs of shapes currently under this pin's tip. Should include the moved
-  // shape when that shape was attached to this pin; the helper uses it to
-  // decide whether to emit this pin/group at all.
   membersNow: readonly TLShapeId[]
 }
 
+// BFS through the pin graph starting from `movedShapeId`. Handles transitive
+// chains: pin1 = {X,Y}, pin2 = {Y,Z} → moving X ripples X → Y → Z. Each
+// record is emitted once regardless of overlap; the moved shape itself is
+// not emitted (the caller already applied that move).
 export function computePinUpdates(
   movedShapeId: TLShapeId,
   dx: number,
@@ -40,28 +40,47 @@ export function computePinUpdates(
     id: TLShapeId
   ) => { type: TLShape["type"]; x: number; y: number } | null
 ): ShapeMove[] {
+  const groupsArr = [...groups]
   const updates: ShapeMove[] = []
-  const seen = new Set<TLShapeId>([movedShapeId])
+  const moved = new Set<TLShapeId>([movedShapeId])
+  const pinQueue: PinGroupInput[] = []
 
-  for (const { pin, membersNow } of groups) {
-    if (!membersNow.includes(movedShapeId)) continue
-
-    if (!seen.has(pin.id)) {
-      seen.add(pin.id)
-      updates.push({ id: pin.id, type: "pin", x: pin.x + dx, y: pin.y + dy })
+  for (const g of groupsArr) {
+    if (g.membersNow.includes(movedShapeId) && !moved.has(g.pin.id)) {
+      moved.add(g.pin.id)
+      pinQueue.push(g)
     }
+  }
 
-    for (const memberId of membersNow) {
-      if (seen.has(memberId)) continue
+  while (pinQueue.length > 0) {
+    const g = pinQueue.shift()
+    if (!g) break
+    updates.push({
+      id: g.pin.id,
+      type: "pin",
+      x: g.pin.x + dx,
+      y: g.pin.y + dy,
+    })
+
+    for (const memberId of g.membersNow) {
+      if (moved.has(memberId)) continue
+      moved.add(memberId)
       const s = getShape(memberId)
       if (!s) continue
-      seen.add(memberId)
       updates.push({
         id: memberId,
         type: s.type,
         x: s.x + dx,
         y: s.y + dy,
       })
+
+      for (const g2 of groupsArr) {
+        if (moved.has(g2.pin.id)) continue
+        if (g2.membersNow.includes(memberId)) {
+          moved.add(g2.pin.id)
+          pinQueue.push(g2)
+        }
+      }
     }
   }
 
@@ -69,14 +88,15 @@ export function computePinUpdates(
 }
 
 // Cached prev-bounds per shape so we can answer "was the pin attached to this
-// shape *before* the move?" without relying on bounds we can't reconstruct
-// from a stale record (arrows, lines, draw strokes with prop-based geometry).
+// shape *before* the move?" without reconstructing bounds from a stale record
+// (arrows, lines, draw strokes all have prop-based geometry that doesn't
+// reduce to x/y/w/h).
 const lastBoundsByShape = new Map<TLShapeId, PinBounds>()
 
-// Resize guard + x/y-first-with-bounds-fallback delta detector. x/y works for
-// rects/notes/images/draws (they translate via their top-left); bounds work
-// for arrows and lines (prop-based geometry leaves x/y untouched on body
-// drags). Returns null for resizes so handles don't drag siblings along.
+// Resize guard + x/y-first-with-bounds-fallback delta. x/y works for geo/
+// note/image/draw (their top-left rides with the drag); bounds work for
+// arrows and lines (prop geometry leaves x/y untouched on body drags).
+// Returns null for resizes so top/left handles don't drag siblings.
 function readTranslateDelta(
   prev: TLShape,
   next: TLShape,
@@ -119,6 +139,35 @@ function arrowBoundToSibling(
   return false
 }
 
+// Every pin on the current page → the shapes currently under its tip. The
+// caller hands in the moved shape's prev bounds so we can re-add it to any
+// group whose tip sat inside the pre-move geometry (the shape may have slid
+// out from under the tip by the time we query current bounds).
+function buildPinGroups(
+  editor: Editor,
+  movedId: TLShapeId,
+  prevBounds: PinBounds | undefined
+): PinGroupInput[] {
+  const groups: PinGroupInput[] = []
+  for (const shape of editor.getCurrentPageShapes()) {
+    if (shape.type !== "pin") continue
+    const tip = pinTipPoint(shape)
+    const membersNow = findShapesUnderPinTip(editor, tip)
+    if (
+      prevBounds &&
+      pointInBounds(tip, prevBounds, PIN_HIT_MARGIN) &&
+      !membersNow.includes(movedId)
+    ) {
+      membersNow.push(movedId)
+    }
+    groups.push({
+      pin: { id: shape.id, x: shape.x, y: shape.y },
+      membersNow,
+    })
+  }
+  return groups
+}
+
 export function usePinAttachment(editor: Editor | null) {
   useEffect(() => {
     if (!editor) return
@@ -126,7 +175,7 @@ export function usePinAttachment(editor: Editor | null) {
     // Per-flush propagation guard. tldraw's atomic-flush loop processes each
     // round of pending events in a fresh iteration, so a plain boolean would
     // be re-evaluated and trigger recursive cascades — tracking each
-    // propagated ID lets us skip them exactly once.
+    // propagated ID lets us consume the token exactly at afterChange time.
     const propagatedIds = new Set<TLShapeId>()
 
     // Seed the bounds cache so fallback deltas work on the first drag after
@@ -139,8 +188,6 @@ export function usePinAttachment(editor: Editor | null) {
     const disposeChange = editor.sideEffects.registerAfterChangeHandler(
       "shape",
       (prev, next) => {
-        // Refresh the cache for pins so their bounds track any propagation
-        // we just applied; no further work is needed for pins themselves.
         if (next.type === "pin") {
           const b = editor.getShapePageBounds(next.id)
           if (b) {
@@ -155,7 +202,7 @@ export function usePinAttachment(editor: Editor | null) {
         }
 
         // Read prev bounds *before* refreshing the cache — we need the
-        // pre-move geometry to answer "was any pin attached to this shape?"
+        // pre-move geometry to answer "was any pin attached to this shape?".
         const prevBounds = lastBoundsByShape.get(next.id)
         const nextBoundsRaw = editor.getShapePageBounds(next.id)
         const nextBounds = nextBoundsRaw
@@ -176,19 +223,8 @@ export function usePinAttachment(editor: Editor | null) {
         const delta = readTranslateDelta(prev, next, prevBounds, nextBounds)
         if (!delta) return
 
-        // Find every pin whose tip was inside this shape's pre-move bounds.
-        // That set is the shapes the user would *expect* to drag together —
-        // regardless of when each sibling was added to the canvas.
-        const attachedPins = collectAttachedPins(editor, prevBounds)
-        if (attachedPins.length === 0) return
-
-        // For each of those pins, the propagation group is whatever is
-        // currently under its tip (which may include shapes that were added
-        // *after* the pin was placed — the whole point of this refactor).
-        const groups: PinGroupInput[] = attachedPins.map((pin) => ({
-          pin: { id: pin.id, x: pin.x, y: pin.y },
-          membersNow: findShapesUnderPinTip(editor, pinTipPoint(pin)),
-        }))
+        const groups = buildPinGroups(editor, next.id, prevBounds)
+        if (groups.length === 0) return
 
         const updates = computePinUpdates(
           next.id,
@@ -203,8 +239,8 @@ export function usePinAttachment(editor: Editor | null) {
         )
         if (updates.length === 0) return
 
-        // Arrow double-move guard: skip arrows that tldraw's own binding is
-        // already carrying along (bound to another sibling in this batch).
+        // Arrow double-move guard: skip arrows already being carried by
+        // tldraw's own binding to another sibling in this batch.
         const siblingIds = updates.map((u) => u.id)
         siblingIds.push(next.id)
         const filtered = updates.filter((u) => {
@@ -221,6 +257,11 @@ export function usePinAttachment(editor: Editor | null) {
             filtered.map((u) => ({ id: u.id, type: u.type, x: u.x, y: u.y }))
           )
         })
+        // Don't sweep propagatedIds after the run — tldraw's atomic-flush
+        // loop drains pendingAfterEvents across several while-loop iterations,
+        // so a propagated shape's afterChange may fire in a later pass than
+        // this run returns on. Clearing here would pull the guard token out
+        // from under that deferred handler and re-propagate infinitely.
       }
     )
 
@@ -236,23 +277,4 @@ export function usePinAttachment(editor: Editor | null) {
       disposeDelete()
     }
   }, [editor])
-}
-
-// Walks all pins on the current page and keeps those whose tip falls inside
-// `shapeBounds` (expanded by the pin hit margin). Used to decide, at afterChange
-// time, which pins were "over" the shape that just moved.
-function collectAttachedPins(
-  editor: Editor,
-  shapeBounds: PinBounds | undefined
-): TLPinShape[] {
-  if (!shapeBounds) return []
-  const attached: TLPinShape[] = []
-  for (const shape of editor.getCurrentPageShapes()) {
-    if (shape.type !== "pin") continue
-    const tip = pinTipPoint(shape)
-    if (pointInBounds(tip, shapeBounds, PIN_HIT_MARGIN)) {
-      attached.push(shape as TLPinShape)
-    }
-  }
-  return attached
 }

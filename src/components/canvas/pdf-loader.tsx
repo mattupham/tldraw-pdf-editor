@@ -39,7 +39,11 @@ export function PdfLoader({
             Load a file from your device or try a sample.
           </p>
         </div>
-        {error && <p className="text-sm text-destructive">{error}</p>}
+        {error && (
+          <p role="alert" className="text-sm text-destructive">
+            {error}
+          </p>
+        )}
         <div className="flex flex-col gap-2">
           <Button onClick={() => inputRef.current?.click()}>Open PDF</Button>
           <Button variant="outline" onClick={onExample}>
@@ -50,6 +54,8 @@ export function PdfLoader({
           ref={inputRef}
           type="file"
           accept="application/pdf"
+          aria-label="Choose a PDF file"
+          tabIndex={-1}
           className="hidden"
           onChange={handleFileChange}
         />

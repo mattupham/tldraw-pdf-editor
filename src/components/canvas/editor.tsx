@@ -1,7 +1,8 @@
 "use client"
 
 import { Camera } from "lucide-react"
-import { createContext, useContext, useState } from "react"
+import { useTheme } from "next-themes"
+import { createContext, useContext, useEffect, useState } from "react"
 import {
   ArrowDownToolbarItem,
   ArrowLeftToolbarItem,
@@ -42,6 +43,11 @@ import {
   XBoxToolbarItem,
 } from "tldraw"
 import { ExportPdfButton } from "@/components/canvas/export-pdf-button"
+import { ThemeToggle } from "@/components/theme-toggle"
+import {
+  blobAssetStore,
+  disposeBlobAssets,
+} from "@/lib/tldraw/blob-asset-store"
 import { CameraTool } from "@/tools/camera/camera-tool"
 import { CropOverlay } from "@/tools/camera/crop-overlay"
 import { usePdfProtection } from "@/tools/pdf/use-pdf-protection"
@@ -126,9 +132,21 @@ function CameraToolbarItem() {
   )
 }
 
+// Render the ThemeToggle + Export PDF button together in tldraw's top-right
+// SharePanel slot. Grouping them here avoids a collision with a separate
+// fixed top-right toggle, and keeps canvas-only UI inside the canvas chrome.
+function SharePanelContent() {
+  return (
+    <div className="flex items-center gap-2 p-2">
+      <ThemeToggle />
+      <ExportPdfButton />
+    </div>
+  )
+}
+
 const components: TLComponents = {
   InFrontOfTheCanvas: CropOverlay,
-  SharePanel: ExportPdfButton,
+  SharePanel: SharePanelContent,
   // Explicit order puts camera + pin + rectangle early so they always fit
   // the visible row; the remaining default tools trail behind and drop into
   // the overflow chevron on narrow viewports, matching the reference mocks.
@@ -178,15 +196,48 @@ function Bridges() {
   return null
 }
 
+// Mirrors next-themes' resolved theme into tldraw's own colorScheme user
+// preference so the canvas chrome (toolbar, panels) stays in lockstep with
+// the rest of the app. next-themes already drives the `.dark` class on
+// <html>; tldraw's panels don't read that — they read editor.user prefs.
+function ColorSchemeBridge() {
+  const editor = useEditor()
+  const { resolvedTheme } = useTheme()
+
+  useEffect(() => {
+    if (!editor) return
+    if (resolvedTheme !== "light" && resolvedTheme !== "dark") return
+    editor.user.updateUserPreferences({ colorScheme: resolvedTheme })
+  }, [editor, resolvedTheme])
+
+  return null
+}
+
 export default function Canvas({ children }: { children?: React.ReactNode }) {
   const [editor, setEditor] = useState<Editor | null>(null)
 
   function handleMount(e: Editor) {
     setEditor(e)
-    // Test hook — lets E2E specs call editor APIs via window.__editor
-    // @ts-expect-error test-only
-    window.__editor = e
+    // Test hook — lets E2E specs drive tldraw via window.__editor. Gated so
+    // it never leaks into a real production bundle where a browser extension
+    // could use it. NEXT_PUBLIC_E2E=1 opts CI's prod build back in.
+    if (
+      process.env.NODE_ENV !== "production" ||
+      process.env.NEXT_PUBLIC_E2E === "1"
+    ) {
+      window.__editor = e
+    }
   }
+
+  // Hard reset the module-level blob cache when Canvas unmounts. tldraw's
+  // internal GC fires remove() for orphaned asset records on its own
+  // timeline, but we own the singleton map — clearing here on teardown
+  // prevents blob URLs surviving across a full canvas remount.
+  useEffect(() => {
+    return () => {
+      disposeBlobAssets()
+    }
+  }, [])
 
   return (
     <EditorContext.Provider value={editor}>
@@ -197,9 +248,11 @@ export default function Canvas({ children }: { children?: React.ReactNode }) {
           tools={customTools}
           overrides={uiOverrides}
           components={components}
+          assets={blobAssetStore}
         />
       </div>
       <Bridges />
+      <ColorSchemeBridge />
       {children}
     </EditorContext.Provider>
   )

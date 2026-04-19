@@ -50,20 +50,18 @@ describe("computePinUpdates", () => {
       y: 0,
     })
     expect(xy(updates.find((u) => u.id === b.id))).toEqual({ x: 60, y: 45 })
-    // The moved shape itself is not re-emitted — the caller already applied it.
     expect(updates.find((u) => u.id === a.id)).toBeUndefined()
   })
 
-  // The key scenario that drove this refactor: a pin was placed over A + B,
-  // then C was dragged into the pinned area later. Dragging any of the three
-  // should move all three.
+  // The key scenario that drove the dynamic-membership refactor: a pin was
+  // placed over A + B, then C was dragged into the pinned area later.
+  // Dragging any of the three must move all three.
   it("moves a 3-shape membership even when the third was added after the pin", () => {
     const shapes: ShapeLookup[] = [
       { id: id("a"), type: "geo", x: 0, y: 0 },
       { id: id("b"), type: "geo", x: 20, y: 20 },
-      { id: id("c"), type: "geo", x: 40, y: 40 }, // added after the pin
+      { id: id("c"), type: "geo", x: 40, y: 40 },
     ]
-    // membersNow reflects current overlap — all three are under the pin's tip.
     const group: Group = {
       pin: { id: id("pin1"), x: 30, y: 30 },
       membersNow: shapes.map((s) => s.id),
@@ -82,8 +80,6 @@ describe("computePinUpdates", () => {
   })
 
   it("propagates across overlapping groups without duplicating updates", () => {
-    // Pin A's members = {X, Y}, Pin B's members = {Y, Z}. Moving Y must move
-    // X, Z and both pins — each exactly once.
     const x: ShapeLookup = { id: id("x"), type: "geo", x: 100, y: 100 }
     const y: ShapeLookup = { id: id("y"), type: "geo", x: 200, y: 200 }
     const z: ShapeLookup = { id: id("z"), type: "geo", x: 300, y: 300 }
@@ -157,5 +153,51 @@ describe("computePinUpdates", () => {
     const updates = computePinUpdates(a.id, 1, 1, [group], lookupFor([a, b]))
 
     expect(updates.find((u) => u.id === id("b"))?.type).toBe("image")
+  })
+
+  // Transitive chain: pin1 = {X, Y}, pin2 = {Y, Z}. Moving X should ripple
+  // X → Y → Z via the shared Y bridge — pin2 never contains X directly but
+  // must still be picked up. Without BFS the helper would emit pin1 + Y and
+  // stop there, leaving Z + pin2 behind.
+  it("ripples transitively across chained pins when a non-shared node moves", () => {
+    const x: ShapeLookup = { id: id("x"), type: "geo", x: 0, y: 0 }
+    const y: ShapeLookup = { id: id("y"), type: "geo", x: 100, y: 100 }
+    const z: ShapeLookup = { id: id("z"), type: "geo", x: 200, y: 200 }
+
+    const pin1: Group = {
+      pin: { id: id("pin1"), x: 10, y: 10 },
+      membersNow: [x.id, y.id],
+    }
+    const pin2: Group = {
+      pin: { id: id("pin2"), x: 110, y: 110 },
+      membersNow: [y.id, z.id],
+    }
+
+    const updates = computePinUpdates(
+      x.id,
+      5,
+      -3,
+      [pin1, pin2],
+      lookupFor([x, y, z])
+    )
+
+    const ids = updates.map((u) => u.id)
+    expect(new Set(ids).size).toBe(ids.length)
+    expect(ids).toContain(pin1.pin.id)
+    expect(ids).toContain(pin2.pin.id)
+    expect(ids).toContain(y.id)
+    expect(ids).toContain(z.id)
+    expect(ids).not.toContain(x.id)
+
+    expect(xy(updates.find((u) => u.id === y.id))).toEqual({ x: 105, y: 97 })
+    expect(xy(updates.find((u) => u.id === z.id))).toEqual({ x: 205, y: 197 })
+    expect(xy(updates.find((u) => u.id === pin1.pin.id))).toEqual({
+      x: 15,
+      y: 7,
+    })
+    expect(xy(updates.find((u) => u.id === pin2.pin.id))).toEqual({
+      x: 115,
+      y: 107,
+    })
   })
 })
