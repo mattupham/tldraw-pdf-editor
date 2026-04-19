@@ -14,6 +14,10 @@ import {
   useIsToolSelected,
   useTools,
 } from "tldraw"
+import {
+  blobAssetStore,
+  disposeBlobAssets,
+} from "@/lib/tldraw/blob-asset-store"
 import { CameraTool } from "@/tools/camera/camera-tool"
 import { CropOverlay } from "@/tools/camera/crop-overlay"
 import { PinShapeUtil } from "@/tools/pin/pin-shape-util"
@@ -150,6 +154,16 @@ export default function Canvas({ children }: { children?: React.ReactNode }) {
     }
   }
 
+  // Hard reset the module-level blob cache when Canvas unmounts. tldraw's
+  // internal GC fires remove() for orphaned asset records on its own
+  // timeline, but we own the singleton map — clearing here on teardown
+  // prevents blob URLs surviving across a full canvas remount.
+  useEffect(() => {
+    return () => {
+      disposeBlobAssets()
+    }
+  }, [])
+
   return (
     <EditorContext.Provider value={editor}>
       <div className="fixed inset-0">
@@ -159,6 +173,7 @@ export default function Canvas({ children }: { children?: React.ReactNode }) {
           tools={customTools}
           overrides={uiOverrides}
           components={components}
+          assets={blobAssetStore}
         />
       </div>
       <AttachmentBridge />
