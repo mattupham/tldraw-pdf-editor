@@ -220,6 +220,13 @@ export function usePinAttachment(editor: Editor | null) {
           return
         }
 
+        // Only propagate during a real user translate in the select tool.
+        // While a creation tool (geo/draw/arrow/line) is active the in-progress
+        // shape's x/y can change tick-to-tick without w/h changing, which
+        // readTranslateDelta would otherwise read as a translate and drag the
+        // pin group along with the still-being-drawn shape.
+        if (editor.getCurrentToolId() !== "select") return
+
         const delta = readTranslateDelta(prev, next, prevBounds, nextBounds)
         if (!delta) return
 
