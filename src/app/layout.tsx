@@ -1,5 +1,6 @@
 import type { Metadata } from "next"
 import { Geist_Mono, Inter } from "next/font/google"
+import { headers } from "next/headers"
 import { Toaster } from "sonner"
 
 import "@/app/globals.css"
@@ -20,11 +21,16 @@ const fontMono = Geist_Mono({
   variable: "--font-mono",
 })
 
-export default function RootLayout({
+export default async function RootLayout({
   children,
 }: Readonly<{
   children: React.ReactNode
 }>) {
+  // Per-request nonce minted by middleware.ts. Threaded into next-themes so
+  // its inline color-scheme boot script carries a valid nonce under the
+  // strict-dynamic CSP.
+  const nonce = (await headers()).get("x-nonce") ?? undefined
+
   return (
     <html
       lang="en"
@@ -37,7 +43,7 @@ export default function RootLayout({
       )}
     >
       <body>
-        <ThemeProvider>{children}</ThemeProvider>
+        <ThemeProvider nonce={nonce}>{children}</ThemeProvider>
         <Toaster richColors />
       </body>
     </html>
