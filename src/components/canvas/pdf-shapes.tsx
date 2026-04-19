@@ -6,7 +6,8 @@ import type { Editor, TLImageAsset } from "tldraw"
 import { AssetRecordType, Box, createShapeId, react } from "tldraw"
 import { useEditor } from "@/components/canvas/editor"
 import {
-  getPageLayout,
+  extendLayout,
+  extendLayoutToY,
   openPdf,
   type PageDimensions,
   renderPage,
@@ -136,7 +137,7 @@ export function PdfShapes({ bytes, onError }: PdfShapesProps) {
     let disposeViewportReaction: (() => void) | undefined
     let debounceTimer: ReturnType<typeof setTimeout> | null = null
     const renderedPages = new Set<number>()
-    let layout: PageDimensions[] = []
+    const layout: PageDimensions[] = []
 
     async function renderAndCreate(pageIndex: number) {
       if (aborted || renderedPages.has(pageIndex) || !pdf) return
@@ -162,11 +163,13 @@ export function PdfShapes({ bytes, onError }: PdfShapesProps) {
         pdf = await openPdf(bytes)
         if (aborted) return
 
-        layout = await getPageLayout(pdf)
-        if (aborted) return
-
         const initialCount = Math.min(INITIAL_PAGES, pdf.numPages)
         if (initialCount === 0) return
+
+        // Only fetch page-metadata for the initial batch. For larger decks,
+        // the tail loads page-by-page as the user scrolls into view.
+        await extendLayout(pdf, layout, initialCount - 1)
+        if (aborted) return
 
         // Camera first, pages second. zoomToBounds over the precomputed
         // layout lands the camera in the right place before any shapes
@@ -194,7 +197,17 @@ export function PdfShapes({ bytes, onError }: PdfShapesProps) {
         disposeViewportReaction = react("pdf lazy pages", () => {
           const vp = ed.getViewportPageBounds()
           if (debounceTimer) clearTimeout(debounceTimer)
-          debounceTimer = setTimeout(() => {
+          debounceTimer = setTimeout(async () => {
+            if (aborted || !pdf) return
+            // Extend layout until it either covers the viewport bottom edge
+            // or we've materialised every page. Only pays for pages the
+            // user has actually scrolled towards.
+            try {
+              await extendLayoutToY(pdf, layout, vp.maxY)
+            } catch (err) {
+              notifyError(err)
+              return
+            }
             if (aborted) return
             for (let i = INITIAL_PAGES; i < layout.length; i++) {
               if (renderedPages.has(i)) continue

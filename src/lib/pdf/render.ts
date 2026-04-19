@@ -43,23 +43,50 @@ export async function openPdf(bytes: Uint8Array): Promise<PDFDocumentProxy> {
   }).promise
 }
 
-export async function getPageLayout(
-  pdf: PDFDocumentProxy
-): Promise<PageDimensions[]> {
-  const pages = await Promise.all(
-    Array.from({ length: pdf.numPages }, (_, i) => pdf.getPage(i + 1))
-  )
-
-  const layout: PageDimensions[] = []
-  let yOffset = 0
-
-  for (const page of pages) {
+/**
+ * Extend a cumulative page-layout array up to (and including) `throughIndex`.
+ *
+ * Mutates `layout` in place. Only fetches viewports for pages not already
+ * resolved, so repeated calls amortise to O(pages-visited) instead of the
+ * O(pdf.numPages) the old eager `getPageLayout` paid on every open.
+ *
+ * Why incremental: the viewport listener needs to know cumulative y-offsets
+ * to hit-test tail pages against the camera rect. But we don't want to
+ * fetch metadata for pages the user may never scroll to. Walking lazily
+ * keeps big decks (100+ pages) off the critical path.
+ */
+export async function extendLayout(
+  pdf: PDFDocumentProxy,
+  layout: PageDimensions[],
+  throughIndex: number
+): Promise<void> {
+  const target = Math.min(throughIndex, pdf.numPages - 1)
+  if (target < layout.length) return
+  while (layout.length <= target) {
+    const i = layout.length
+    const page = await pdf.getPage(i + 1)
     const vp = page.getViewport({ scale: 1 })
-    layout.push({ w: vp.width, h: vp.height, x: -vp.width / 2, y: yOffset })
-    yOffset += vp.height + GUTTER
+    const prev = layout[i - 1]
+    const y = prev ? prev.y + prev.h + GUTTER : 0
+    layout.push({ w: vp.width, h: vp.height, x: -vp.width / 2, y })
   }
+}
 
-  return layout
+/**
+ * Extend the layout until either every page is resolved or the cumulative
+ * bottom edge passes `yTarget` (usually the viewport's maxY). Returns early
+ * once the layout is "deep enough" for a visibility check.
+ */
+export async function extendLayoutToY(
+  pdf: PDFDocumentProxy,
+  layout: PageDimensions[],
+  yTarget: number
+): Promise<void> {
+  while (layout.length < pdf.numPages) {
+    const last = layout[layout.length - 1]
+    if (last && last.y + last.h >= yTarget) return
+    await extendLayout(pdf, layout, layout.length)
+  }
 }
 
 export async function renderPage(
