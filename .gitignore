@@ -42,3 +42,7 @@ next-env.d.ts
 
 # generated assets — copied by postinstall
 public/pdf.worker.min.mjs
+
+# AI transcripts — curated set is added manually with `git add -f`;
+# this keeps auto-copied Claude session logs out of accidental diffs
+transcripts/**/*.jsonl

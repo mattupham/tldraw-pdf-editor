@@ -9,9 +9,7 @@ Built for the H2 coding exercise. See [`SPEC.md`](./SPEC.md) for the full techni
 
 ## Walkthrough video
 
-<!-- TODO: paste Loom/QuickTime URL here -->
-
-A short screen recording demonstrating each task end-to-end: opening a PDF, dropping a pin on overlapping shapes, dragging an attached shape, cropping a region with the camera tool, and exporting the annotated PDF.
+> **Link coming — recording in progress.** A short screen recording demonstrating each task end-to-end: opening a PDF, dropping a pin on overlapping shapes, dragging an attached shape, cropping a region with the camera tool, and exporting the annotated PDF.
 
 ## Stack
 

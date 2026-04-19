@@ -8,7 +8,7 @@ Per-task log of what I chose, what I rejected, and why. The [SPEC](./SPEC.md) ha
 
 The SPEC §9 flagged three ambiguities that needed an explicit call. The answers below are reflected in tests and video walkthrough.
 
-1. **Orphan pins when the attached set drops below 2 → delete the pin.** Keeping them would need a "ghost" visual to communicate they've lost their grouping, which is extra surface for no functional gain. Implemented in `use-pin-attachment.ts` via the `registerBeforeDeleteHandler` path.
+1. **Orphan pins when the attached set drops below 2 → delete the pin.** Keeping them would need a "ghost" visual to communicate they've lost their grouping, which is extra surface for no functional gain. Implemented in `use-pin-attachment.ts` via the `registerAfterDeleteHandler` path.
 2. **Pin on 3+ overlapping shapes → attach all of them.** "Only the top two" is surprising when the user can see three shapes under the pin; "all" is the more useful default and the spec says 2+ as a minimum case, not a maximum.
 3. **Crop region export → include PDF raster shapes.** The crop takes a screenshot; whatever's inside the rectangle goes in. Filtering PDF pages out of `getShapeIdsInsideBounds` would violate least-surprise.
 
@@ -58,7 +58,7 @@ The SPEC §9 flagged three ambiguities that needed an explicit call. The answers
 
 **`hitInside: true` side-effect: pins attach to the PDF page.** Because PDF pages are rendered as tldraw image shapes, `getShapesAtPoint({ hitInside: true })` returns them alongside user-drawn shapes — so every in-bounds pin drop attaches to at least the page image. Matches the "pin on empty canvas" behaviour shown in the spec video (a lone pin sitting on the PDF) and doesn't cause drag issues since PDF pages aren't draggable in practice (they're locked and filter out of the afterChange drag path).
 
-**Orphaned pins deleted via `registerBeforeDeleteHandler`.** When an attached shape is deleted, the handler walks every pin whose `attachedShapeIds` contains that ID, removes it, and deletes any pin whose set drops below 2. See [Open questions](#open-questions-resolved).
+**Orphaned pins deleted via `registerAfterDeleteHandler`.** When an attached shape is deleted, the handler walks every pin whose `attachedShapeIds` contains that ID, removes it, and deletes any pin whose set drops below 2. See [Open questions](#open-questions-resolved).
 
 **`snapshotPins` is O(n) per change.** Walks every shape on the page on every afterChange tick — fine for decks of a few dozen shapes. A pin index via `editor.store.listen` filtered to pin records would scale better if this grew; not worth the complexity at current scale.
 
