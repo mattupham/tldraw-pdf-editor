@@ -24,7 +24,7 @@ This is a Next.js 16 App Router template wired to shadcn/ui. It is intentionally
 - **Radix primitives** are imported from the single `radix-ui` package (e.g. `import { Slot } from "radix-ui"`), not `@radix-ui/*` sub-packages. Follow this when adding components.
 - **Path aliases** (from `tsconfig.json` + `components.json`): `@/*` → `src/`. Canonical aliases are `@/components`, `@/components/ui`, `@/lib`, `@/lib/utils`, `@/hooks`.
 - **Styling helper**: `cn()` in `src/lib/utils.ts` composes `clsx` + `tailwind-merge`. Variants use `class-variance-authority` (`cva`).
-- **Theming**: `src/components/theme-provider.tsx` wraps `next-themes` (attribute=`class`, default=`system`) and installs a global hotkey — pressing `d` (outside of inputs/contenteditable) toggles light/dark.
+- **Theming**: `src/components/theme-provider.tsx` wraps `next-themes` (attribute=`class`, default=`system`). `src/components/theme-toggle.tsx` is a shadcn Sun/Moon icon button mounted top-right by `canvas-host.tsx`; a `ColorSchemeBridge` inside `editor.tsx` mirrors the resolved theme onto tldraw's `user.colorScheme` pref so canvas chrome matches app chrome.
 
 ## Code style
 

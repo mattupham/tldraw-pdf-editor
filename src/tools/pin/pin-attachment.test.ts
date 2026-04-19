@@ -185,4 +185,51 @@ describe("computePinUpdates", () => {
 
     expect(updates).toEqual([])
   })
+
+  it("ripples transitively across chained pins when a non-shared node moves", () => {
+    // pin1 = {X, Y}, pin2 = {Y, Z}. Moving X should reach Z via the Y bridge.
+    // This is the spec-required behaviour that a direct (non-BFS) walk would
+    // miss: pin1 contains X so we'd propagate to pin1+Y, but pin2 doesn't
+    // contain X directly — we only find it by revisiting from Y.
+    const x: ShapeSnapshot = { id: id("x"), type: "geo", x: 0, y: 0 }
+    const y: ShapeSnapshot = { id: id("y"), type: "geo", x: 100, y: 100 }
+    const z: ShapeSnapshot = { id: id("z"), type: "geo", x: 200, y: 200 }
+
+    const pin1: PinSnapshot = {
+      id: id("pin1"),
+      x: 10,
+      y: 10,
+      attachedShapeIds: [x.id, y.id],
+    }
+    const pin2: PinSnapshot = {
+      id: id("pin2"),
+      x: 110,
+      y: 110,
+      attachedShapeIds: [y.id, z.id],
+    }
+
+    const updates = computePinUpdates(
+      [pin1, pin2],
+      x.id,
+      5,
+      -3,
+      makeLookup([x, y, z])
+    )
+
+    const ids = updates.map((u) => u.id)
+    expect(new Set(ids).size).toBe(ids.length) // no duplicates
+    expect(ids).toContain(pin1.id)
+    expect(ids).toContain(pin2.id)
+    expect(ids).toContain(y.id)
+    expect(ids).toContain(z.id)
+    expect(ids).not.toContain(x.id) // X is the mover, caller already applied
+
+    expect(xy(updates.find((u) => u.id === y.id))).toEqual({ x: 105, y: 97 })
+    expect(xy(updates.find((u) => u.id === z.id))).toEqual({ x: 205, y: 197 })
+    expect(xy(updates.find((u) => u.id === pin1.id))).toEqual({ x: 15, y: 7 })
+    expect(xy(updates.find((u) => u.id === pin2.id))).toEqual({
+      x: 115,
+      y: 107,
+    })
+  })
 })

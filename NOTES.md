@@ -57,7 +57,7 @@
 
 **Focus ring.** `TldrawUiButton` inherits tldraw's native focus styling — no override needed.
 
-**`prefers-reduced-motion`.** The marching-ants crop animation is already gated behind `@media (prefers-reduced-motion: no-preference)` in `globals.css`.
+**`prefers-reduced-motion`.** `globals.css` gates the marching-ants crop animation behind `@media (prefers-reduced-motion: no-preference)` and adds a global `prefers-reduced-motion: reduce` block that neutralises every animation + transition duration — covers the shadcn skeleton pulse and any future `animate-*` utilities without a per-component opt-in.
 
 ### PDF Error Handling
 
@@ -65,6 +65,16 @@
 
 ### Performance
 
-**No main-thread blocks > 50 ms.** PDF rasterization runs on `OffscreenCanvas` (off main thread). The first 10 pages render sequentially but each `renderPage` call yields between pages (async/await); remaining pages load lazily behind a 150 ms debounce on the store listener. The main thread is only touched for `editor.createAssets` / `editor.createShapes` calls, which are tldraw store writes and complete in < 1 ms each.
+**Main-thread budget.** PDF rasterization runs on `OffscreenCanvas` (off main thread). The first 10 pages render with a concurrency cap of 4; remaining pages load lazily behind a 150 ms debounce on the store listener. Page-metadata layout (`extendLayout` / `extendLayoutToY`) is also lazy — we only `pdf.getPage()` for pages either in the initial batch or visible in the current viewport, so opening a 500-page deck doesn't serialise 500 metadata fetches up front. The main thread is only touched for `editor.createAssets` / `editor.createShapes` calls, which are tldraw store writes and complete in < 1 ms each. Measured ad-hoc via DevTools; not asserted in CI.
+
+**Asset memory.** `lib/tldraw/blob-asset-store.ts` is a custom `TLAssetStore` that stashes each uploaded `Blob` in a module-level `Map` keyed by asset id, returns `asset:<id>` as the asset's `src` (one of the validator's allowed protocols), and mints a `URL.createObjectURL` per asset lazily in `resolve()`. The URL is cached so tldraw's re-renders don't churn through new blob URLs. `remove()` revokes on tldraw's garbage collection; `disposeBlobAssets()` is called from Canvas' useEffect cleanup for hard teardown. Net: a PDF page's rasterized PNG lives as a `Blob` (1×) plus a small URL string instead of a UTF-16 base64 data URL (~2.6×) held in the asset record — cuts steady-state canvas memory roughly 60% for raster-heavy workloads.
 
 **Browser targets.** Verified against latest Chrome, Safari, and Firefox. `OffscreenCanvas`, `structuredClone`, and dynamic `import()` are all baseline-supported; no polyfills added.
+
+### Security
+
+**Headers.** `middleware.ts` mints a fresh UUID-based nonce on every request and sets the full CSP (`default-src 'self'`, `script-src 'self' 'nonce-<fresh>' 'strict-dynamic' 'wasm-unsafe-eval'`, `style-src 'self' 'unsafe-inline'`, `worker-src 'self' blob:`, `object-src 'none'`, `frame-ancestors 'none'`). Next.js threads the nonce onto every inline script it emits automatically once `x-nonce` is on the request headers; `next-themes` picks up the same nonce via its `nonce` prop (passed from `layout.tsx` via async `headers()`). `strict-dynamic` means any script with a valid nonce can transitively load further scripts — enough for Next's bootstrap pipeline without granting blanket `'unsafe-inline'`. `next.config.mjs` still owns the request-independent headers (`X-Frame-Options: DENY`, `X-Content-Type-Options: nosniff`, `Referrer-Policy`, `Permissions-Policy`). Trade-off: `export const dynamic = "force-dynamic"` on `app/page.tsx` — a build-time prerender would bake a stale nonce that can't match the request-time CSP.
+
+**pdfjs hardening.** `getDocument` is called with `isEvalSupported: false`, `disableAutoFetch: true`, `disableStream: true` to close the class of font-eval CVEs and disable speculative range fetches we don't need (the bytes are already in memory).
+
+**E2E hook is gated.** `window.__editor` only mounts when `process.env.NODE_ENV !== "production"` or `NEXT_PUBLIC_E2E === "1"`. CI sets the env at the job level so the prod bundle Playwright serves carries the hook; real production builds do not.

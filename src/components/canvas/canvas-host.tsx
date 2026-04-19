@@ -4,6 +4,7 @@ import { useState } from "react"
 import Canvas from "@/components/canvas/editor"
 import { PdfLoader } from "@/components/canvas/pdf-loader"
 import { PdfShapes } from "@/components/canvas/pdf-shapes"
+import { ThemeToggle } from "@/components/theme-toggle"
 import { Skeleton } from "@/components/ui/skeleton"
 
 type CanvasState =
@@ -38,33 +39,53 @@ export function CanvasHost() {
     setState({ status: "error", message })
   }
 
+  // Single fixed-position overlay shared across every branch so the toggle
+  // stays put while the canvas state transitions.
+  const themeToggle = (
+    <div className="fixed right-3 top-3 z-50">
+      <ThemeToggle />
+    </div>
+  )
+
   if (state.status === "empty" || state.status === "error") {
     return (
-      <PdfLoader
-        onFile={handleFile}
-        onExample={handleExample}
-        onError={handleError}
-        error={state.status === "error" ? state.message : undefined}
-      />
+      <main>
+        {themeToggle}
+        <PdfLoader
+          onFile={handleFile}
+          onExample={handleExample}
+          onError={handleError}
+          error={state.status === "error" ? state.message : undefined}
+        />
+      </main>
     )
   }
 
   if (state.status === "loading") {
     return (
-      <div className="flex min-h-svh items-center justify-center">
-        <div className="flex w-full max-w-sm flex-col gap-3 p-8">
+      <main className="flex min-h-svh items-center justify-center">
+        {themeToggle}
+        <div
+          role="status"
+          aria-live="polite"
+          aria-label="Loading PDF"
+          className="flex w-full max-w-sm flex-col gap-3 p-8"
+        >
           <Skeleton className="h-6 w-3/4" />
           <Skeleton className="h-4 w-full" />
           <Skeleton className="h-4 w-5/6" />
           <Skeleton className="mt-4 h-64 w-full rounded-xl" />
         </div>
-      </div>
+      </main>
     )
   }
 
   return (
-    <Canvas>
-      <PdfShapes bytes={state.bytes} onError={handleError} />
-    </Canvas>
+    <main>
+      {themeToggle}
+      <Canvas>
+        <PdfShapes bytes={state.bytes} onError={handleError} />
+      </Canvas>
+    </main>
   )
 }

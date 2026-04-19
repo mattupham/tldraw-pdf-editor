@@ -23,8 +23,14 @@ export type ShapeMove = ShapeSnapshot
 // Pure helper so we can unit-test the delta math without mounting tldraw.
 // Returns the list of shape/pin moves triggered by `movedShapeId` shifting by
 // (dx, dy). The moved shape itself is not included — the caller has already
-// applied that move. Each affected shape (and pin) is emitted once, even when
-// several pins' attached sets overlap.
+// applied that move. Each affected shape (and pin) is emitted once.
+//
+// Walks the transitive closure via BFS: if pin A attaches {X,Y} and pin B
+// attaches {Y,Z}, dragging X ripples X → Y → Z. Spec §4 calls this out
+// ("when Y moves, X, Y, Z all move"). Doing the closure here — rather than
+// relying on afterChange re-firing for propagated shapes — lets the hook
+// keep its simple consume-at-fire recursion guard without losing transitive
+// reach.
 export function computePinUpdates(
   pins: Iterable<PinSnapshot>,
   movedShapeId: TLShapeId,
@@ -32,33 +38,41 @@ export function computePinUpdates(
   dy: number,
   getShape: (id: TLShapeId) => ShapeSnapshot | null
 ): ShapeMove[] {
+  const pinList = Array.from(pins)
   const updates: ShapeMove[] = []
   const seen = new Set<TLShapeId>([movedShapeId])
+  const queue: TLShapeId[] = [movedShapeId]
 
-  for (const pin of pins) {
-    if (!pin.attachedShapeIds.includes(movedShapeId)) continue
+  while (queue.length > 0) {
+    const current = queue.shift() as TLShapeId
+    for (const pin of pinList) {
+      if (!pin.attachedShapeIds.includes(current)) continue
 
-    if (!seen.has(pin.id)) {
-      seen.add(pin.id)
-      updates.push({
-        id: pin.id,
-        type: "pin",
-        x: pin.x + dx,
-        y: pin.y + dy,
-      })
-    }
+      if (!seen.has(pin.id)) {
+        seen.add(pin.id)
+        updates.push({
+          id: pin.id,
+          type: "pin",
+          x: pin.x + dx,
+          y: pin.y + dy,
+        })
+      }
 
-    for (const shapeId of pin.attachedShapeIds) {
-      if (seen.has(shapeId)) continue
-      const shape = getShape(shapeId)
-      if (!shape) continue
-      seen.add(shapeId)
-      updates.push({
-        id: shapeId,
-        type: shape.type,
-        x: shape.x + dx,
-        y: shape.y + dy,
-      })
+      for (const shapeId of pin.attachedShapeIds) {
+        if (seen.has(shapeId)) continue
+        const shape = getShape(shapeId)
+        if (!shape) continue
+        seen.add(shapeId)
+        updates.push({
+          id: shapeId,
+          type: shape.type,
+          x: shape.x + dx,
+          y: shape.y + dy,
+        })
+        // Propagate onwards: this shape may be in another pin's attached
+        // set, transitively extending the group.
+        queue.push(shapeId)
+      }
     }
   }
 
@@ -161,6 +175,14 @@ export function usePinAttachment(editor: Editor | null) {
             }))
           )
         })
+        // Don't sweep propagatedIds after the run — tldraw's
+        // flushAtomicCallbacks drains pendingAfterEvents across several
+        // iterations of its while-loop. afterChange for shape B may fire in a
+        // *later* iteration than the one this run returned on. Deleting ids
+        // here would pull the token out from under that deferred handler and
+        // cause B's afterChange to look like a real drag, re-propagating into
+        // an infinite cascade. The consume-at-fire delete above is the right
+        // (and only) place to drain.
       }
     )
 

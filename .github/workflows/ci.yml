@@ -25,9 +25,22 @@ jobs:
       - run: pnpm check
       - run: pnpm typecheck
       - run: pnpm test
-      - run: pnpm build
+
+      # NEXT_PUBLIC_E2E=1 is scoped to the two steps that need it:
+      # `pnpm build` bakes the flag into the client bundle (Next.js
+      # statically inlines NEXT_PUBLIC_* at build time), and Playwright's
+      # webServer runs against that bundle. DO NOT move this to the job
+      # level — any future deploy step inheriting it would ship the
+      # window.__editor hook to real users.
+      - name: Build (E2E-instrumented)
+        run: pnpm build
+        env:
+          NEXT_PUBLIC_E2E: "1"
 
       - name: Install Playwright browsers
         run: pnpm exec playwright install --with-deps chromium
 
-      - run: pnpm test:e2e
+      - name: E2E
+        run: pnpm test:e2e
+        env:
+          NEXT_PUBLIC_E2E: "1"

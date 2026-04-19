@@ -2,11 +2,12 @@
 
 import type { PDFDocumentProxy } from "pdfjs-dist"
 import { useEffect, useRef } from "react"
-import type { Editor } from "tldraw"
-import { AssetRecordType, createShapeId, react } from "tldraw"
+import type { Editor, TLImageAsset } from "tldraw"
+import { AssetRecordType, Box, createShapeId, react } from "tldraw"
 import { useEditor } from "@/components/canvas/editor"
 import {
-  getPageLayout,
+  extendLayout,
+  extendLayoutToY,
   openPdf,
   type PageDimensions,
   renderPage,
@@ -25,40 +26,80 @@ interface PdfShapesProps {
   onError?: (message: string) => void
 }
 
-function createPageShape(
+async function buildPageAsset(
   editor: Editor,
   pageIndex: number,
-  url: string,
+  blob: Blob,
+  dims: PageDimensions
+): Promise<TLImageAsset> {
+  const name = `page-${pageIndex + 1}.png`
+  const file = new File([blob], name, { type: "image/png" })
+  // AssetRecordType.create returns the widened TLAsset union (image |
+  // video | bookmark); the `as` narrows it based on the literal type: "image"
+  // we pass. No generic overload is available on RecordType.create.
+  const asset = AssetRecordType.create({
+    id: AssetRecordType.createId(),
+    type: "image",
+    props: {
+      src: "",
+      w: dims.w,
+      h: dims.h,
+      mimeType: "image/png",
+      isAnimated: false,
+      name,
+    },
+  }) as TLImageAsset
+  // uploadAsset routes through the store's assets handler (FileReader-backed
+  // data URL by default, or whatever custom TLAssetStore the host wires in).
+  // Keeps this code oblivious to the storage strategy.
+  const { src, meta } = await editor.uploadAsset(asset, file)
+  return {
+    ...asset,
+    props: { ...asset.props, src },
+    meta: meta ?? asset.meta,
+  }
+}
+
+function createPageShape(
+  editor: Editor,
+  asset: TLImageAsset,
   dims: PageDimensions
 ) {
-  const assetId = AssetRecordType.createId()
   // Batch the asset + shape creation into one store update so reactive
   // subscribers flush once per page instead of twice.
   editor.run(() => {
-    editor.createAssets([
-      AssetRecordType.create({
-        id: assetId,
-        type: "image",
-        props: {
-          src: url,
-          w: dims.w,
-          h: dims.h,
-          mimeType: "image/png",
-          isAnimated: false,
-          name: `page-${pageIndex + 1}.png`,
-        },
-      }),
-    ])
+    editor.createAssets([asset])
     editor.createShapes([
       {
         id: createShapeId(),
         type: "image",
         x: dims.x,
         y: dims.y,
-        props: { assetId, w: dims.w, h: dims.h },
+        isLocked: true,
+        meta: { isPdfPage: true },
+        props: { assetId: asset.id, w: dims.w, h: dims.h },
       },
     ])
   })
+}
+
+// Bounding box of a set of page rectangles, in page-space. Returned as a
+// tldraw Box so we can hand it to editor.zoomToBounds.
+function unionBounds(pages: PageDimensions[]): Box {
+  if (pages.length === 0) return new Box(0, 0, 0, 0)
+  const [first, ...rest] = pages
+  if (!first) return new Box(0, 0, 0, 0)
+  let minX = first.x
+  let minY = first.y
+  let maxX = first.x + first.w
+  let maxY = first.y + first.h
+  for (const p of rest) {
+    if (p.x < minX) minX = p.x
+    if (p.y < minY) minY = p.y
+    if (p.x + p.w > maxX) maxX = p.x + p.w
+    if (p.y + p.h > maxY) maxY = p.y + p.h
+  }
+  return new Box(minX, minY, maxX - minX, maxY - minY)
 }
 
 // Bounded-concurrency parallel map. pdfjs queues jobs on its worker so we don't
@@ -82,20 +123,6 @@ async function mapConcurrent<T>(
   await Promise.all(workers)
 }
 
-// Synchronous base64 → data URL. The FileReader route works but adds an async
-// round-trip per page; this keeps the encoding on the same microtask as the
-// blob.arrayBuffer() await.
-async function blobToDataUrl(blob: Blob, mime: string): Promise<string> {
-  const buf = (await blob.arrayBuffer()) as ArrayBuffer
-  const bytes = new Uint8Array(buf)
-  const CHUNK = 8192
-  let bin = ""
-  for (let i = 0; i < bytes.length; i += CHUNK) {
-    bin += String.fromCharCode(...bytes.subarray(i, i + CHUNK))
-  }
-  return `data:${mime};base64,${btoa(bin)}`
-}
-
 export function PdfShapes({ bytes, onError }: PdfShapesProps) {
   const editor = useEditor()
   const onErrorRef = useRef(onError)
@@ -106,23 +133,22 @@ export function PdfShapes({ bytes, onError }: PdfShapesProps) {
 
     const ed = editor
     let aborted = false
-    let pdf: PDFDocumentProxy
+    let pdf: PDFDocumentProxy | undefined
     let disposeViewportReaction: (() => void) | undefined
+    let debounceTimer: ReturnType<typeof setTimeout> | null = null
     const renderedPages = new Set<number>()
-    let layout: PageDimensions[] = []
+    const layout: PageDimensions[] = []
 
     async function renderAndCreate(pageIndex: number) {
-      if (aborted || renderedPages.has(pageIndex)) return
+      if (aborted || renderedPages.has(pageIndex) || !pdf) return
       const dims = layout[pageIndex]
       if (!dims) return
       renderedPages.add(pageIndex)
       const blob = await renderPage(pdf, pageIndex + 1)
       if (aborted) return
-      // tldraw's asset.src validator rejects blob: URLs (accepts only
-      // http/https/data/asset), so we encode to a data URL.
-      const url = await blobToDataUrl(blob, "image/png")
+      const asset = await buildPageAsset(ed, pageIndex, blob, dims)
       if (aborted) return
-      createPageShape(ed, pageIndex, url, dims)
+      createPageShape(ed, asset, dims)
     }
 
     function notifyError(err: unknown) {
@@ -137,19 +163,26 @@ export function PdfShapes({ bytes, onError }: PdfShapesProps) {
         pdf = await openPdf(bytes)
         if (aborted) return
 
-        layout = await getPageLayout(pdf)
-        if (aborted) return
-
         const initialCount = Math.min(INITIAL_PAGES, pdf.numPages)
         if (initialCount === 0) return
 
-        // Render page 1 first and zoom immediately so first meaningful paint
-        // isn't gated on the rest of the initial batch.
+        // Only fetch page-metadata for the initial batch. For larger decks,
+        // the tail loads page-by-page as the user scrolls into view.
+        await extendLayout(pdf, layout, initialCount - 1)
+        if (aborted) return
+
+        // Camera first, pages second. zoomToBounds over the precomputed
+        // layout lands the camera in the right place before any shapes
+        // exist, so as pages render in they slot into the viewport. Avoids
+        // the "camera snaps away from the user" UX we'd get by re-fitting
+        // mid-render.
+        const bounds = unionBounds(layout.slice(0, initialCount))
+        ed.zoomToBounds(bounds, { animation: { duration: 0 } })
+
+        // Page 1 first so first meaningful paint isn't gated on the batch;
+        // pages 2..N in parallel with bounded concurrency.
         await renderAndCreate(0)
         if (aborted) return
-        ed.zoomToFit({ animation: { duration: 0 } })
-
-        // Pages 2..N render in parallel with bounded concurrency.
         if (initialCount > 1) {
           const rest = Array.from({ length: initialCount - 1 }, (_, i) => i + 1)
           await mapConcurrent(rest, renderAndCreate, RENDER_CONCURRENCY)
@@ -161,11 +194,20 @@ export function PdfShapes({ bytes, onError }: PdfShapesProps) {
         // Lazy-load the tail. `react()` auto-subscribes to whatever signals
         // `getViewportPageBounds()` reads — so this only fires on camera
         // changes, not on every unrelated store write.
-        let debounceTimer: ReturnType<typeof setTimeout> | null = null
         disposeViewportReaction = react("pdf lazy pages", () => {
           const vp = ed.getViewportPageBounds()
           if (debounceTimer) clearTimeout(debounceTimer)
-          debounceTimer = setTimeout(() => {
+          debounceTimer = setTimeout(async () => {
+            if (aborted || !pdf) return
+            // Extend layout until it either covers the viewport bottom edge
+            // or we've materialised every page. Only pays for pages the
+            // user has actually scrolled towards.
+            try {
+              await extendLayoutToY(pdf, layout, vp.maxY)
+            } catch (err) {
+              notifyError(err)
+              return
+            }
             if (aborted) return
             for (let i = INITIAL_PAGES; i < layout.length; i++) {
               if (renderedPages.has(i)) continue
@@ -192,6 +234,12 @@ export function PdfShapes({ bytes, onError }: PdfShapesProps) {
     return () => {
       aborted = true
       disposeViewportReaction?.()
+      if (debounceTimer) clearTimeout(debounceTimer)
+      // Tear down the pdfjs worker. Cancels any in-flight render tasks and
+      // releases the Web Worker backing the document. Without this, swapping
+      // PDFs (or unmounting mid-render) leaks a worker thread per load.
+      // destroy() can reject if a render is in-flight; we don't await it.
+      pdf?.destroy().catch(() => {})
     }
   }, [editor, bytes])
 

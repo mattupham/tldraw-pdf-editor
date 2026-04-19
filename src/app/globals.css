@@ -139,3 +139,18 @@
     animation: tl-camera-march 0.4s linear infinite;
   }
 }
+
+/* Suppress every time-based animation (shadcn Skeleton pulse, tldraw spinners,
+   future tw-animate-css utilities) when the user opted out. !important is
+   intentional here — Tailwind's animate-* utilities win without it. */
+@media (prefers-reduced-motion: reduce) {
+  /* biome-ignore-start lint/complexity/noImportantStyles: override Tailwind animate-* */
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+  /* biome-ignore-end lint/complexity/noImportantStyles: override Tailwind animate-* */
+}
