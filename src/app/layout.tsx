@@ -1,11 +1,9 @@
 import type { Metadata } from "next"
 import { Geist_Mono, Inter } from "next/font/google"
-import { headers } from "next/headers"
 import { Toaster } from "sonner"
 
 import "@/app/globals.css"
 import "tldraw/tldraw.css"
-import { ThemeProvider } from "@/components/theme-provider"
 import { cn } from "@/lib/utils"
 
 export const metadata: Metadata = {
@@ -21,20 +19,14 @@ const fontMono = Geist_Mono({
   variable: "--font-mono",
 })
 
-export default async function RootLayout({
+export default function RootLayout({
   children,
 }: Readonly<{
   children: React.ReactNode
 }>) {
-  // Per-request nonce minted by middleware.ts. Threaded into next-themes so
-  // its inline color-scheme boot script carries a valid nonce under the
-  // strict-dynamic CSP.
-  const nonce = (await headers()).get("x-nonce") ?? undefined
-
   return (
     <html
       lang="en"
-      suppressHydrationWarning
       className={cn(
         "antialiased",
         fontMono.variable,
@@ -43,7 +35,7 @@ export default async function RootLayout({
       )}
     >
       <body>
-        <ThemeProvider nonce={nonce}>{children}</ThemeProvider>
+        {children}
         <Toaster richColors />
       </body>
     </html>

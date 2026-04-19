@@ -4,8 +4,8 @@ import { type NextRequest, NextResponse } from "next/server"
 //
 // Why middleware and not next.config.mjs headers(): static headers can't carry
 // a per-request secret. We need a fresh nonce on every request so inline
-// scripts Next.js injects (RSC hydration pushes, next-themes' color-scheme
-// init) can be whitelisted without 'unsafe-inline'.
+// scripts Next.js injects (RSC hydration pushes) can be whitelisted without
+// 'unsafe-inline'.
 //
 // strict-dynamic is the trust-propagation directive: any script with a valid
 // nonce can load further scripts without each one needing its own nonce.

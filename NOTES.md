@@ -92,8 +92,6 @@ The SPEC §9 flagged three ambiguities that needed an explicit call. The answers
 
 **`prefers-reduced-motion`.** `globals.css` has a global `@media (prefers-reduced-motion: reduce)` block that neutralises every animation + transition duration — covers the camera's marching-ants, the shadcn skeleton pulse, and any future `animate-*` utility without a per-component opt-in. The marching-ants animation is additionally wrapped in `@media (prefers-reduced-motion: no-preference)` inline so it's inert on first paint instead of fading out after a reset.
 
-**Dark mode.** `theme-toggle.tsx` is a shadcn Sun/Moon button mounted top-right; `ColorSchemeBridge` inside `editor.tsx` mirrors the resolved theme onto tldraw's `user.colorScheme` pref so canvas chrome matches app chrome. `next-themes` handles the `class` attribute flip on `<html>`.
-
 ---
 
 ## Performance
