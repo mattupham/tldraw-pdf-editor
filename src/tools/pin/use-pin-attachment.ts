@@ -371,6 +371,22 @@ export function usePinAttachment(editor: Editor | null) {
             h: b.h,
           })
         }
+
+        // Keep pins above everything. tldraw assigns newly-created shapes an
+        // index above the current max, so a pin created before a later shape
+        // ends up visually behind it. Re-raise all pins after any non-pin
+        // shape is created. A freshly placed pin already sits on top (no-op
+        // branch). This only updates `index` — bounds/position are untouched,
+        // so the afterChange pin-propagation path sees no translate delta.
+        if (shape.type === "pin") return
+        const pinIds: TLShapeId[] = []
+        for (const s of editor.getCurrentPageShapes()) {
+          if (s.type === "pin") pinIds.push(s.id)
+        }
+        if (pinIds.length === 0) return
+        editor.run(() => {
+          editor.bringToFront(pinIds)
+        })
       }
     )
 
