@@ -2,62 +2,65 @@
 
 import { useEffect } from "react"
 import type { Editor, TLShape, TLShapeId } from "tldraw"
+import {
+  findShapesUnderPinTip,
+  PIN_HIT_MARGIN,
+  type PinBounds,
+  pinTipPoint,
+  pointInBounds,
+} from "@/tools/pin/pin-overlap"
 import type { TLPinShape } from "@/tools/pin/pin-shape-util"
 
-export interface PinSnapshot {
-  id: TLShapeId
-  x: number
-  y: number
-  attachedShapeIds: readonly TLShapeId[]
-}
-
-export interface ShapeSnapshot {
+export interface ShapeMove {
   id: TLShapeId
   type: TLShape["type"]
   x: number
   y: number
 }
 
-export type ShapeMove = ShapeSnapshot
+// Pure propagation helper. Given a moved shape + its delta, the set of pins
+// that were attached to it *before* the move, and the other shapes currently
+// under each of those pins, returns the list of sibling + pin moves to apply.
+// Each affected record is emitted once even when multiple pins overlap the
+// same sibling.
+export interface PinGroupInput {
+  pin: { id: TLShapeId; x: number; y: number }
+  // IDs of shapes currently under this pin's tip. Should include the moved
+  // shape when that shape was attached to this pin; the helper uses it to
+  // decide whether to emit this pin/group at all.
+  membersNow: readonly TLShapeId[]
+}
 
-// Pure helper so we can unit-test the delta math without mounting tldraw.
-// Returns the list of shape/pin moves triggered by `movedShapeId` shifting by
-// (dx, dy). The moved shape itself is not included — the caller has already
-// applied that move. Each affected shape (and pin) is emitted once, even when
-// several pins' attached sets overlap.
 export function computePinUpdates(
-  pins: Iterable<PinSnapshot>,
   movedShapeId: TLShapeId,
   dx: number,
   dy: number,
-  getShape: (id: TLShapeId) => ShapeSnapshot | null
+  groups: Iterable<PinGroupInput>,
+  getShape: (
+    id: TLShapeId
+  ) => { type: TLShape["type"]; x: number; y: number } | null
 ): ShapeMove[] {
   const updates: ShapeMove[] = []
   const seen = new Set<TLShapeId>([movedShapeId])
 
-  for (const pin of pins) {
-    if (!pin.attachedShapeIds.includes(movedShapeId)) continue
+  for (const { pin, membersNow } of groups) {
+    if (!membersNow.includes(movedShapeId)) continue
 
     if (!seen.has(pin.id)) {
       seen.add(pin.id)
-      updates.push({
-        id: pin.id,
-        type: "pin",
-        x: pin.x + dx,
-        y: pin.y + dy,
-      })
+      updates.push({ id: pin.id, type: "pin", x: pin.x + dx, y: pin.y + dy })
     }
 
-    for (const shapeId of pin.attachedShapeIds) {
-      if (seen.has(shapeId)) continue
-      const shape = getShape(shapeId)
-      if (!shape) continue
-      seen.add(shapeId)
+    for (const memberId of membersNow) {
+      if (seen.has(memberId)) continue
+      const s = getShape(memberId)
+      if (!s) continue
+      seen.add(memberId)
       updates.push({
-        id: shapeId,
-        type: shape.type,
-        x: shape.x + dx,
-        y: shape.y + dy,
+        id: memberId,
+        type: s.type,
+        x: s.x + dx,
+        y: s.y + dy,
       })
     }
   }
@@ -65,100 +68,157 @@ export function computePinUpdates(
   return updates
 }
 
-function snapshotOfPin(shape: TLPinShape): PinSnapshot {
-  return {
-    id: shape.id,
-    x: shape.x,
-    y: shape.y,
-    attachedShapeIds: shape.props.attachedShapeIds,
+// Cached prev-bounds per shape so we can answer "was the pin attached to this
+// shape *before* the move?" without relying on bounds we can't reconstruct
+// from a stale record (arrows, lines, draw strokes with prop-based geometry).
+const lastBoundsByShape = new Map<TLShapeId, PinBounds>()
+
+// Resize guard + x/y-first-with-bounds-fallback delta detector. x/y works for
+// rects/notes/images/draws (they translate via their top-left); bounds work
+// for arrows and lines (prop-based geometry leaves x/y untouched on body
+// drags). Returns null for resizes so handles don't drag siblings along.
+function readTranslateDelta(
+  prev: TLShape,
+  next: TLShape,
+  prevBounds: PinBounds | undefined,
+  nextBounds: PinBounds | undefined
+): { dx: number; dy: number } | null {
+  const prevW = (prev.props as { w?: number }).w
+  const prevH = (prev.props as { h?: number }).h
+  const nextW = (next.props as { w?: number }).w
+  const nextH = (next.props as { h?: number }).h
+  if (prevW !== nextW || prevH !== nextH) return null
+
+  const xyDx = next.x - prev.x
+  const xyDy = next.y - prev.y
+  if (xyDx !== 0 || xyDy !== 0) return { dx: xyDx, dy: xyDy }
+
+  if (!prevBounds || !nextBounds) return null
+  const dx = nextBounds.x - prevBounds.x
+  const dy = nextBounds.y - prevBounds.y
+  if (dx === 0 && dy === 0) return null
+  return { dx, dy }
+}
+
+// True when `candidate` is an arrow bound (by tldraw's own arrow binding) to
+// any shape in `siblings`. We skip propagating translates to such arrows
+// because the arrow-binding system already carries them along — doubling our
+// delta would overshoot.
+function arrowBoundToSibling(
+  editor: Editor,
+  candidate: TLShape,
+  siblings: Iterable<TLShapeId>
+): boolean {
+  if (candidate.type !== "arrow") return false
+  const bindings = editor.getBindingsFromShape(candidate.id, "arrow")
+  if (bindings.length === 0) return false
+  const sibSet = new Set(siblings)
+  for (const b of bindings) {
+    if (sibSet.has(b.toId)) return true
   }
+  return false
 }
 
 export function usePinAttachment(editor: Editor | null) {
   useEffect(() => {
     if (!editor) return
 
-    // Per-editor propagation guard. A plain boolean isn't enough: tldraw's
-    // flushAtomicCallbacks while-loop processes each round of pendingAfterEvents
-    // in a new iteration, resetting handler context between rounds. When shapeA
-    // moves and we propagate shapeB, shapeB's afterChange fires in the *next*
-    // iteration with the boolean already reset, triggering another cascade.
-    // Tracking each propagated ID lets us skip exactly those shapes later.
+    // Per-flush propagation guard. tldraw's atomic-flush loop processes each
+    // round of pending events in a fresh iteration, so a plain boolean would
+    // be re-evaluated and trigger recursive cascades — tracking each
+    // propagated ID lets us skip them exactly once.
     const propagatedIds = new Set<TLShapeId>()
 
-    // Pin index kept in sync via sideEffects. Avoids walking every shape on
-    // the page (O(shapes)) on every shape afterChange during a drag; lookup
-    // now scales with the number of pins, not total shapes on the canvas.
-    const pinIndex = new Map<TLShapeId, PinSnapshot>()
+    // Seed the bounds cache so fallback deltas work on the first drag after
+    // mount (esp. for arrow/line body drags where x/y doesn't change).
     for (const shape of editor.getCurrentPageShapes()) {
-      if (shape.type === "pin") {
-        pinIndex.set(shape.id, snapshotOfPin(shape as TLPinShape))
-      }
+      const b = editor.getShapePageBounds(shape.id)
+      if (b) lastBoundsByShape.set(shape.id, { x: b.x, y: b.y, w: b.w, h: b.h })
     }
-
-    const disposeCreate = editor.sideEffects.registerAfterCreateHandler(
-      "shape",
-      (created) => {
-        if (created.type !== "pin") return
-        pinIndex.set(created.id, snapshotOfPin(created as TLPinShape))
-      }
-    )
 
     const disposeChange = editor.sideEffects.registerAfterChangeHandler(
       "shape",
       (prev, next) => {
-        // Keep the pin index in sync on any pin change (including moves we
-        // propagate ourselves — the index needs to reflect new positions).
+        // Refresh the cache for pins so their bounds track any propagation
+        // we just applied; no further work is needed for pins themselves.
         if (next.type === "pin") {
-          pinIndex.set(next.id, snapshotOfPin(next as TLPinShape))
+          const b = editor.getShapePageBounds(next.id)
+          if (b) {
+            lastBoundsByShape.set(next.id, {
+              x: b.x,
+              y: b.y,
+              w: b.w,
+              h: b.h,
+            })
+          }
           return
         }
+
+        // Read prev bounds *before* refreshing the cache — we need the
+        // pre-move geometry to answer "was any pin attached to this shape?"
+        const prevBounds = lastBoundsByShape.get(next.id)
+        const nextBoundsRaw = editor.getShapePageBounds(next.id)
+        const nextBounds = nextBoundsRaw
+          ? {
+              x: nextBoundsRaw.x,
+              y: nextBoundsRaw.y,
+              w: nextBoundsRaw.w,
+              h: nextBoundsRaw.h,
+            }
+          : undefined
+        if (nextBounds) lastBoundsByShape.set(next.id, nextBounds)
 
         if (propagatedIds.has(next.id)) {
           propagatedIds.delete(next.id)
           return
         }
-        if (next.x === prev.x && next.y === prev.y) return
 
-        // Skip resizes. Dragging a top/left handle also changes x/y (alongside
-        // w/h in props), and we don't want to drag attached shapes along on
-        // resize — only on pure translate.
-        const prevW = (prev.props as { w?: number }).w
-        const prevH = (prev.props as { h?: number }).h
-        const nextW = (next.props as { w?: number }).w
-        const nextH = (next.props as { h?: number }).h
-        if (prevW !== nextW || prevH !== nextH) return
+        const delta = readTranslateDelta(prev, next, prevBounds, nextBounds)
+        if (!delta) return
 
-        if (pinIndex.size === 0) return
+        // Find every pin whose tip was inside this shape's pre-move bounds.
+        // That set is the shapes the user would *expect* to drag together —
+        // regardless of when each sibling was added to the canvas.
+        const attachedPins = collectAttachedPins(editor, prevBounds)
+        if (attachedPins.length === 0) return
 
-        const dx = next.x - prev.x
-        const dy = next.y - prev.y
+        // For each of those pins, the propagation group is whatever is
+        // currently under its tip (which may include shapes that were added
+        // *after* the pin was placed — the whole point of this refactor).
+        const groups: PinGroupInput[] = attachedPins.map((pin) => ({
+          pin: { id: pin.id, x: pin.x, y: pin.y },
+          membersNow: findShapesUnderPinTip(editor, pinTipPoint(pin)),
+        }))
 
         const updates = computePinUpdates(
-          pinIndex.values(),
           next.id,
-          dx,
-          dy,
+          delta.dx,
+          delta.dy,
+          groups,
           (id) => {
-            const shape = editor.getShape(id)
-            if (!shape) return null
-            return { id: shape.id, type: shape.type, x: shape.x, y: shape.y }
+            const s = editor.getShape(id)
+            if (!s) return null
+            return { type: s.type, x: s.x, y: s.y }
           }
         )
-
         if (updates.length === 0) return
 
-        for (const update of updates) {
-          propagatedIds.add(update.id)
-        }
+        // Arrow double-move guard: skip arrows that tldraw's own binding is
+        // already carrying along (bound to another sibling in this batch).
+        const siblingIds = updates.map((u) => u.id)
+        siblingIds.push(next.id)
+        const filtered = updates.filter((u) => {
+          if (u.type !== "arrow") return true
+          const candidate = editor.getShape(u.id)
+          if (!candidate) return true
+          return !arrowBoundToSibling(editor, candidate, siblingIds)
+        })
+        if (filtered.length === 0) return
+
+        for (const u of filtered) propagatedIds.add(u.id)
         editor.run(() => {
           editor.updateShapes(
-            updates.map((u) => ({
-              id: u.id,
-              type: u.type,
-              x: u.x,
-              y: u.y,
-            }))
+            filtered.map((u) => ({ id: u.id, type: u.type, x: u.x, y: u.y }))
           )
         })
       }
@@ -166,56 +226,33 @@ export function usePinAttachment(editor: Editor | null) {
 
     const disposeDelete = editor.sideEffects.registerAfterDeleteHandler(
       "shape",
-      (deleted: TLShape) => {
-        if (deleted.type === "pin") {
-          pinIndex.delete(deleted.id)
-          return
-        }
-
-        const affected: PinSnapshot[] = []
-        for (const pin of pinIndex.values()) {
-          if (pin.attachedShapeIds.includes(deleted.id)) affected.push(pin)
-        }
-        if (affected.length === 0) return
-
-        editor.markHistoryStoppingPoint("pin attachment cascade")
-        editor.run(() => {
-          const pinsToDelete: TLShapeId[] = []
-          const pinsToUpdate: Array<{
-            id: TLShapeId
-            type: "pin"
-            props: { attachedShapeIds: TLShapeId[] }
-          }> = []
-
-          for (const pin of affected) {
-            const nextIds = pin.attachedShapeIds.filter(
-              (id) => id !== deleted.id
-            )
-            if (nextIds.length < 2) {
-              pinsToDelete.push(pin.id)
-            } else {
-              pinsToUpdate.push({
-                id: pin.id,
-                type: "pin",
-                props: { attachedShapeIds: nextIds },
-              })
-            }
-          }
-
-          if (pinsToUpdate.length > 0) {
-            editor.updateShapes(pinsToUpdate)
-          }
-          if (pinsToDelete.length > 0) {
-            editor.deleteShapes(pinsToDelete)
-          }
-        })
+      (deleted) => {
+        lastBoundsByShape.delete(deleted.id)
       }
     )
 
     return () => {
-      disposeCreate()
       disposeChange()
       disposeDelete()
     }
   }, [editor])
+}
+
+// Walks all pins on the current page and keeps those whose tip falls inside
+// `shapeBounds` (expanded by the pin hit margin). Used to decide, at afterChange
+// time, which pins were "over" the shape that just moved.
+function collectAttachedPins(
+  editor: Editor,
+  shapeBounds: PinBounds | undefined
+): TLPinShape[] {
+  if (!shapeBounds) return []
+  const attached: TLPinShape[] = []
+  for (const shape of editor.getCurrentPageShapes()) {
+    if (shape.type !== "pin") continue
+    const tip = pinTipPoint(shape)
+    if (pointInBounds(tip, shapeBounds, PIN_HIT_MARGIN)) {
+      attached.push(shape as TLPinShape)
+    }
+  }
+  return attached
 }

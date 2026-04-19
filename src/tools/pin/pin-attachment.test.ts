@@ -1,188 +1,161 @@
-import type { TLShapeId } from "tldraw"
+import type { TLShape, TLShapeId } from "tldraw"
 import { describe, expect, it } from "vitest"
 import {
   computePinUpdates,
-  type PinSnapshot,
-  type ShapeSnapshot,
+  type ShapeMove,
 } from "@/tools/pin/use-pin-attachment"
 
 const id = (s: string) => `shape:${s}` as TLShapeId
 
-const xy = (shape: ShapeSnapshot | undefined) =>
-  shape ? { x: shape.x, y: shape.y } : undefined
+type ShapeLookup = {
+  id: TLShapeId
+  type: TLShape["type"]
+  x: number
+  y: number
+}
 
-function makeLookup(shapes: ShapeSnapshot[]) {
+const xy = (move: ShapeMove | undefined) =>
+  move ? { x: move.x, y: move.y } : undefined
+
+function lookupFor(shapes: ShapeLookup[]) {
   const map = new Map(shapes.map((s) => [s.id, s]))
-  return (lookupId: TLShapeId) => map.get(lookupId) ?? null
+  return (lookupId: TLShapeId) => {
+    const s = map.get(lookupId)
+    return s ? { type: s.type, x: s.x, y: s.y } : null
+  }
+}
+
+// In the dynamic-membership model a "group" is a pin + whatever shapes are
+// currently under its tip. The attachment handler computes that on each
+// afterChange; the pure helper below assumes the caller has already done so.
+type Group = {
+  pin: { id: TLShapeId; x: number; y: number }
+  membersNow: TLShapeId[]
 }
 
 describe("computePinUpdates", () => {
   it("moves the pin and the other attached shape when a 2-shape set moves", () => {
-    const shapeA: ShapeSnapshot = { id: id("a"), type: "geo", x: 10, y: 10 }
-    const shapeB: ShapeSnapshot = { id: id("b"), type: "geo", x: 50, y: 50 }
-    const pin: PinSnapshot = {
-      id: id("pin1"),
-      x: 5,
-      y: 5,
-      attachedShapeIds: [shapeA.id, shapeB.id],
+    const a: ShapeLookup = { id: id("a"), type: "geo", x: 10, y: 10 }
+    const b: ShapeLookup = { id: id("b"), type: "geo", x: 50, y: 50 }
+    const group: Group = {
+      pin: { id: id("pin1"), x: 5, y: 5 },
+      membersNow: [a.id, b.id],
     }
 
-    const updates = computePinUpdates(
-      [pin],
-      shapeA.id,
-      10,
-      -5,
-      makeLookup([shapeA, shapeB])
-    )
+    const updates = computePinUpdates(a.id, 10, -5, [group], lookupFor([a, b]))
 
     expect(updates).toHaveLength(2)
-    expect(xy(updates.find((u) => u.id === pin.id))).toEqual({ x: 15, y: 0 })
-    expect(xy(updates.find((u) => u.id === shapeB.id))).toEqual({
-      x: 60,
-      y: 45,
+    expect(xy(updates.find((u) => u.id === group.pin.id))).toEqual({
+      x: 15,
+      y: 0,
     })
-    // The moved shape itself should not be in the update list — the caller has
-    // already applied that move.
-    expect(updates.find((u) => u.id === shapeA.id)).toBeUndefined()
+    expect(xy(updates.find((u) => u.id === b.id))).toEqual({ x: 60, y: 45 })
+    // The moved shape itself is not re-emitted — the caller already applied it.
+    expect(updates.find((u) => u.id === a.id)).toBeUndefined()
   })
 
-  it("moves every other member of a 3-shape set", () => {
-    const shapes: ShapeSnapshot[] = [
+  // The key scenario that drove this refactor: a pin was placed over A + B,
+  // then C was dragged into the pinned area later. Dragging any of the three
+  // should move all three.
+  it("moves a 3-shape membership even when the third was added after the pin", () => {
+    const shapes: ShapeLookup[] = [
       { id: id("a"), type: "geo", x: 0, y: 0 },
       { id: id("b"), type: "geo", x: 20, y: 20 },
-      { id: id("c"), type: "image", x: 40, y: 40 },
+      { id: id("c"), type: "geo", x: 40, y: 40 }, // added after the pin
     ]
-    const pin: PinSnapshot = {
-      id: id("pin1"),
-      x: 0,
-      y: 0,
-      attachedShapeIds: shapes.map((s) => s.id),
+    // membersNow reflects current overlap — all three are under the pin's tip.
+    const group: Group = {
+      pin: { id: id("pin1"), x: 30, y: 30 },
+      membersNow: shapes.map((s) => s.id),
     }
 
-    const updates = computePinUpdates([pin], id("b"), 5, 7, makeLookup(shapes))
+    const updates = computePinUpdates(id("b"), 5, 7, [group], lookupFor(shapes))
 
     expect(updates).toHaveLength(3)
-    expect(xy(updates.find((u) => u.id === pin.id))).toEqual({ x: 5, y: 7 })
+    expect(xy(updates.find((u) => u.id === group.pin.id))).toEqual({
+      x: 35,
+      y: 37,
+    })
     expect(xy(updates.find((u) => u.id === id("a")))).toEqual({ x: 5, y: 7 })
     expect(xy(updates.find((u) => u.id === id("c")))).toEqual({ x: 45, y: 47 })
-    // shape B is the mover and must not appear in the update list.
     expect(updates.find((u) => u.id === id("b"))).toBeUndefined()
-
-    // Preserve each shape's own type so the caller can round-trip the patch.
-    expect(updates.find((u) => u.id === id("c"))?.type).toBe("image")
   })
 
-  it("propagates across overlapping sets without duplicating updates", () => {
-    // A = {X, Y}, B = {Y, Z}. Moving Y must move X, Z and both pins — each
-    // shape once, even though Y appears in both sets.
-    const x: ShapeSnapshot = { id: id("x"), type: "geo", x: 100, y: 100 }
-    const y: ShapeSnapshot = { id: id("y"), type: "geo", x: 200, y: 200 }
-    const z: ShapeSnapshot = { id: id("z"), type: "geo", x: 300, y: 300 }
+  it("propagates across overlapping groups without duplicating updates", () => {
+    // Pin A's members = {X, Y}, Pin B's members = {Y, Z}. Moving Y must move
+    // X, Z and both pins — each exactly once.
+    const x: ShapeLookup = { id: id("x"), type: "geo", x: 100, y: 100 }
+    const y: ShapeLookup = { id: id("y"), type: "geo", x: 200, y: 200 }
+    const z: ShapeLookup = { id: id("z"), type: "geo", x: 300, y: 300 }
 
-    const pinA: PinSnapshot = {
-      id: id("pinA"),
-      x: 0,
-      y: 0,
-      attachedShapeIds: [x.id, y.id],
+    const groupA: Group = {
+      pin: { id: id("pinA"), x: 0, y: 0 },
+      membersNow: [x.id, y.id],
     }
-    const pinB: PinSnapshot = {
-      id: id("pinB"),
-      x: 1,
-      y: 1,
-      attachedShapeIds: [y.id, z.id],
+    const groupB: Group = {
+      pin: { id: id("pinB"), x: 1, y: 1 },
+      membersNow: [y.id, z.id],
     }
 
     const updates = computePinUpdates(
-      [pinA, pinB],
       y.id,
       10,
       10,
-      makeLookup([x, y, z])
+      [groupA, groupB],
+      lookupFor([x, y, z])
     )
 
     const ids = updates.map((u) => u.id)
-    // Four distinct targets: two pins plus X and Z. No duplicates, no Y.
     expect(ids).toHaveLength(4)
     expect(new Set(ids).size).toBe(4)
-    expect(ids).toContain(pinA.id)
-    expect(ids).toContain(pinB.id)
+    expect(ids).toContain(groupA.pin.id)
+    expect(ids).toContain(groupB.pin.id)
     expect(ids).toContain(x.id)
     expect(ids).toContain(z.id)
     expect(ids).not.toContain(y.id)
-
-    expect(xy(updates.find((u) => u.id === x.id))).toEqual({ x: 110, y: 110 })
-    expect(xy(updates.find((u) => u.id === z.id))).toEqual({ x: 310, y: 310 })
   })
 
-  it("returns nothing for a 1-shape attached set (no grouping effect)", () => {
-    const shape: ShapeSnapshot = { id: id("a"), type: "geo", x: 0, y: 0 }
-    const pin: PinSnapshot = {
-      id: id("pin1"),
-      x: 0,
-      y: 0,
-      attachedShapeIds: [shape.id],
+  it("returns just the pin for a 1-member group (the pin follows the lone shape)", () => {
+    const shape: ShapeLookup = { id: id("a"), type: "geo", x: 0, y: 0 }
+    const group: Group = {
+      pin: { id: id("pin1"), x: 0, y: 0 },
+      membersNow: [shape.id],
     }
 
     const updates = computePinUpdates(
-      [pin],
       shape.id,
       10,
       10,
-      makeLookup([shape])
+      [group],
+      lookupFor([shape])
     )
 
-    // Ticket decision: a pin over one (or zero) shape still exists but does
-    // not group-move. The pin itself still follows, so we expect just the pin.
     expect(updates).toHaveLength(1)
-    expect(updates[0]?.id).toBe(pin.id)
+    expect(updates[0]?.id).toBe(group.pin.id)
   })
 
-  it("skips attached ids whose shapes no longer exist (stale ids)", () => {
-    // After a delete the side-effect prunes the id from each pin's set, but
-    // that pruning happens in the afterDelete handler — another afterChange
-    // handler running in the same tick could still see a stale id. The pure
-    // helper must skip those instead of emitting undefined moves.
-    const live: ShapeSnapshot = { id: id("live"), type: "geo", x: 0, y: 0 }
-    const moved: ShapeSnapshot = { id: id("moved"), type: "geo", x: 0, y: 0 }
-    const pin: PinSnapshot = {
-      id: id("pin1"),
-      x: 0,
-      y: 0,
-      attachedShapeIds: [moved.id, live.id, id("gone")],
+  it("ignores groups whose membership does not include the moved shape", () => {
+    const a: ShapeLookup = { id: id("a"), type: "geo", x: 0, y: 0 }
+    const unrelated: Group = {
+      pin: { id: id("pin1"), x: 0, y: 0 },
+      membersNow: [id("x"), id("y")],
     }
 
-    const updates = computePinUpdates(
-      [pin],
-      moved.id,
-      3,
-      4,
-      makeLookup([moved, live])
-    )
-
-    // Pin + live shape only — the "gone" id is silently skipped.
-    expect(updates).toHaveLength(2)
-    expect(updates.find((u) => u.id === id("gone"))).toBeUndefined()
-    expect(xy(updates.find((u) => u.id === live.id))).toEqual({ x: 3, y: 4 })
-  })
-
-  it("ignores pins whose attached set does not contain the moved shape", () => {
-    const shape: ShapeSnapshot = { id: id("a"), type: "geo", x: 0, y: 0 }
-    const other: ShapeSnapshot = { id: id("b"), type: "geo", x: 0, y: 0 }
-    const unrelated: PinSnapshot = {
-      id: id("pin1"),
-      x: 0,
-      y: 0,
-      attachedShapeIds: [id("c"), id("d")],
-    }
-
-    const updates = computePinUpdates(
-      [unrelated],
-      shape.id,
-      5,
-      5,
-      makeLookup([shape, other])
-    )
+    const updates = computePinUpdates(a.id, 5, 5, [unrelated], lookupFor([a]))
 
     expect(updates).toEqual([])
+  })
+
+  it("preserves each shape's type in the emitted move for round-tripping", () => {
+    const a: ShapeLookup = { id: id("a"), type: "geo", x: 0, y: 0 }
+    const b: ShapeLookup = { id: id("b"), type: "image", x: 0, y: 0 }
+    const group: Group = {
+      pin: { id: id("pin1"), x: 0, y: 0 },
+      membersNow: [a.id, b.id],
+    }
+
+    const updates = computePinUpdates(a.id, 1, 1, [group], lookupFor([a, b]))
+
+    expect(updates.find((u) => u.id === id("b"))?.type).toBe("image")
   })
 })

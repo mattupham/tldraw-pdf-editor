@@ -3,21 +3,17 @@ import {
   type RecordProps,
   Rectangle2d,
   ShapeUtil,
-  shapeIdValidator,
-  T,
   type TLBaseShape,
-  type TLShapeId,
 } from "tldraw"
 import { PinShape } from "@/tools/pin/pin-shape"
 
-export type TLPinShapeProps = {
-  attachedShapeIds: TLShapeId[]
-}
+// Attached shapes are now expressed as "pin" bindings (see pin-binding-util.ts),
+// so the shape itself carries no props. Keeping the shape record empty lets
+// tldraw's binding system own the relationship and its delete cascade.
+export type TLPinShapeProps = Record<string, never>
 
 export type TLPinShape = TLBaseShape<"pin", TLPinShapeProps>
 
-// Augment the global shape map so `TLShape`, `editor.createShape`, and
-// `editor.updateShapes` all recognise "pin" as a valid shape type.
 declare module "tldraw" {
   interface TLGlobalShapePropsMap {
     pin: TLPinShapeProps
@@ -29,9 +25,7 @@ export const PIN_HEIGHT = 32
 
 export class PinShapeUtil extends ShapeUtil<TLPinShape> {
   static override type = "pin" as const
-  static override props: RecordProps<TLPinShape> = {
-    attachedShapeIds: T.arrayOf(shapeIdValidator),
-  }
+  static override props: RecordProps<TLPinShape> = {}
 
   override canEdit = () => false
   override hideResizeHandles = () => true
@@ -39,7 +33,7 @@ export class PinShapeUtil extends ShapeUtil<TLPinShape> {
   override isAspectRatioLocked = () => true
 
   getDefaultProps(): TLPinShape["props"] {
-    return { attachedShapeIds: [] }
+    return {}
   }
 
   getGeometry() {
