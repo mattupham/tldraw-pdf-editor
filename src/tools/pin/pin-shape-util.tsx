@@ -69,4 +69,22 @@ export class PinShapeUtil extends ShapeUtil<TLPinShape> {
   indicator() {
     return <rect x={0} y={0} width={PIN_WIDTH} height={PIN_HEIGHT} />
   }
+
+  // HTMLContainer shapes without toSvg render as an empty wrapper in
+  // editor.toImage(), so pins would disappear from Export PDF / camera crops.
+  // Font size here must match `PinShape`'s on-canvas value so the exported pin
+  // isn't visibly larger than the one the user drew.
+  override toSvg() {
+    return (
+      <text
+        x={PIN_WIDTH / 2}
+        y={PIN_HEIGHT - 4}
+        fontSize={24}
+        textAnchor="middle"
+        dominantBaseline="alphabetic"
+      >
+        📍
+      </text>
+    )
+  }
 }

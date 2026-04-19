@@ -3,18 +3,48 @@
 import { Camera } from "lucide-react"
 import { createContext, useContext, useState } from "react"
 import {
+  ArrowDownToolbarItem,
+  ArrowLeftToolbarItem,
+  ArrowRightToolbarItem,
+  ArrowToolbarItem,
+  ArrowUpToolbarItem,
+  AssetToolbarItem,
+  CheckBoxToolbarItem,
+  CloudToolbarItem,
   DefaultToolbar,
-  DefaultToolbarContent,
+  DiamondToolbarItem,
+  DrawToolbarItem,
   type Editor,
+  EllipseToolbarItem,
+  EraserToolbarItem,
+  FrameToolbarItem,
+  HandToolbarItem,
+  HeartToolbarItem,
+  HexagonToolbarItem,
+  HighlightToolbarItem,
+  LaserToolbarItem,
+  LineToolbarItem,
+  NoteToolbarItem,
+  OvalToolbarItem,
+  RectangleToolbarItem,
+  RhombusToolbarItem,
+  SelectToolbarItem,
+  StarToolbarItem,
+  TextToolbarItem,
   type TLComponents,
   type TLUiOverrides,
   Tldraw,
   TldrawUiButton,
+  TrapezoidToolbarItem,
+  TriangleToolbarItem,
   useIsToolSelected,
   useTools,
+  XBoxToolbarItem,
 } from "tldraw"
+import { ExportPdfButton } from "@/components/canvas/export-pdf-button"
 import { CameraTool } from "@/tools/camera/camera-tool"
 import { CropOverlay } from "@/tools/camera/crop-overlay"
+import { usePdfProtection } from "@/tools/pdf/use-pdf-protection"
 import { PinShapeUtil } from "@/tools/pin/pin-shape-util"
 import { PinTool } from "@/tools/pin/pin-tool"
 import { usePinAttachment } from "@/tools/pin/use-pin-attachment"
@@ -98,20 +128,53 @@ function CameraToolbarItem() {
 
 const components: TLComponents = {
   InFrontOfTheCanvas: CropOverlay,
+  SharePanel: ExportPdfButton,
+  // Explicit order puts camera + pin + rectangle early so they always fit
+  // the visible row; the remaining default tools trail behind and drop into
+  // the overflow chevron on narrow viewports, matching the reference mocks.
   Toolbar() {
     return (
       <DefaultToolbar>
         <CameraToolbarItem />
         <PinToolbarItem />
-        <DefaultToolbarContent />
+        <SelectToolbarItem />
+        <HandToolbarItem />
+        <DrawToolbarItem />
+        <EraserToolbarItem />
+        <ArrowToolbarItem />
+        <TextToolbarItem />
+        <RectangleToolbarItem />
+        <NoteToolbarItem />
+        <AssetToolbarItem />
+        <EllipseToolbarItem />
+        <TriangleToolbarItem />
+        <DiamondToolbarItem />
+        <HexagonToolbarItem />
+        <OvalToolbarItem />
+        <RhombusToolbarItem />
+        <TrapezoidToolbarItem />
+        <StarToolbarItem />
+        <CloudToolbarItem />
+        <HeartToolbarItem />
+        <XBoxToolbarItem />
+        <CheckBoxToolbarItem />
+        <ArrowLeftToolbarItem />
+        <ArrowUpToolbarItem />
+        <ArrowDownToolbarItem />
+        <ArrowRightToolbarItem />
+        <LineToolbarItem />
+        <HighlightToolbarItem />
+        <LaserToolbarItem />
+        <FrameToolbarItem />
       </DefaultToolbar>
     )
   },
 }
 
-function AttachmentBridge() {
+function Bridges() {
   const editor = useEditor()
   usePinAttachment(editor)
+  usePdfProtection(editor)
   return null
 }
 
@@ -136,7 +199,7 @@ export default function Canvas({ children }: { children?: React.ReactNode }) {
           components={components}
         />
       </div>
-      <AttachmentBridge />
+      <Bridges />
       {children}
     </EditorContext.Provider>
   )

@@ -2,7 +2,7 @@
 
 import type { PDFDocumentProxy } from "pdfjs-dist"
 import { useEffect, useRef } from "react"
-import type { Editor } from "tldraw"
+import type { Editor, TLAssetId, TLShapeId } from "tldraw"
 import { AssetRecordType, createShapeId, react } from "tldraw"
 import { useEditor } from "@/components/canvas/editor"
 import {
@@ -11,6 +11,17 @@ import {
   type PageDimensions,
   renderPage,
 } from "@/lib/pdf/render"
+
+export interface PdfApi {
+  // Force-renders any pages that haven't been rasterized yet (beyond the
+  // initial batch + viewport-triggered lazy loads). Used by Export PDF so the
+  // output is complete even for pages the user never scrolled past.
+  renderAll: () => Promise<void>
+}
+
+// Shape meta key — lets Export PDF distinguish PDF page images from any image
+// shapes a user might paste onto the canvas, and orders pages deterministically.
+export const PDF_PAGE_META_KEY = "pdfPageIndex"
 
 // First batch rendered eagerly so the user can see/edit immediately.
 const INITIAL_PAGES = 10
@@ -23,6 +34,7 @@ const LAZY_LOAD_DEBOUNCE_MS = 150
 interface PdfShapesProps {
   bytes: Uint8Array
   onError?: (message: string) => void
+  onReady?: (api: PdfApi) => void
 }
 
 function createPageShape(
@@ -55,7 +67,12 @@ function createPageShape(
         type: "image",
         x: dims.x,
         y: dims.y,
+        // Locked so the PDF acts as a backdrop — users can't accidentally
+        // drag pages out from under their annotations. Pin attachment still
+        // works because it reads shape IDs, not mutable positions.
+        isLocked: true,
         props: { assetId, w: dims.w, h: dims.h },
+        meta: { [PDF_PAGE_META_KEY]: pageIndex },
       },
     ])
   })
@@ -96,10 +113,12 @@ async function blobToDataUrl(blob: Blob, mime: string): Promise<string> {
   return `data:${mime};base64,${btoa(bin)}`
 }
 
-export function PdfShapes({ bytes, onError }: PdfShapesProps) {
+export function PdfShapes({ bytes, onError, onReady }: PdfShapesProps) {
   const editor = useEditor()
   const onErrorRef = useRef(onError)
   onErrorRef.current = onError
+  const onReadyRef = useRef(onReady)
+  onReadyRef.current = onReady
 
   useEffect(() => {
     if (!editor) return
@@ -132,6 +151,26 @@ export function PdfShapes({ bytes, onError }: PdfShapesProps) {
       )
     }
 
+    // Drops any PDF-page shapes (and their assets) left over from a previous
+    // document so a second load doesn't pile new pages on top of the old ones.
+    // User-inserted shapes are preserved — we only touch records we created.
+    function clearExistingPdf() {
+      const stalePageIds: TLShapeId[] = []
+      const staleAssetIds: TLAssetId[] = []
+      for (const shape of ed.getCurrentPageShapes()) {
+        if (shape.type !== "image") continue
+        if (typeof shape.meta[PDF_PAGE_META_KEY] !== "number") continue
+        stalePageIds.push(shape.id)
+        const props = (shape as { props: { assetId: TLAssetId | null } }).props
+        if (props.assetId) staleAssetIds.push(props.assetId)
+      }
+      if (stalePageIds.length === 0) return
+      ed.run(() => {
+        ed.deleteShapes(stalePageIds)
+        if (staleAssetIds.length > 0) ed.deleteAssets(staleAssetIds)
+      })
+    }
+
     async function init() {
       try {
         pdf = await openPdf(bytes)
@@ -140,8 +179,25 @@ export function PdfShapes({ bytes, onError }: PdfShapesProps) {
         layout = await getPageLayout(pdf)
         if (aborted) return
 
+        clearExistingPdf()
+        if (aborted) return
+
         const initialCount = Math.min(INITIAL_PAGES, pdf.numPages)
         if (initialCount === 0) return
+
+        // Expose renderAll as soon as layout is known — Export PDF needs it
+        // even if the user clicks before all initial pages finish rasterizing.
+        onReadyRef.current?.({
+          renderAll: async () => {
+            if (aborted) return
+            const missing: number[] = []
+            for (let i = 0; i < layout.length; i++) {
+              if (!renderedPages.has(i)) missing.push(i)
+            }
+            if (missing.length === 0) return
+            await mapConcurrent(missing, renderAndCreate, RENDER_CONCURRENCY)
+          },
+        })
 
         // Render page 1 first and zoom immediately so first meaningful paint
         // isn't gated on the rest of the initial batch.

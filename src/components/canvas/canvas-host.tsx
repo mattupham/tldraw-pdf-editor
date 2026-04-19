@@ -2,30 +2,38 @@
 
 import { useState } from "react"
 import Canvas from "@/components/canvas/editor"
+import { ExportPdfProvider } from "@/components/canvas/export-pdf-button"
 import { PdfLoader } from "@/components/canvas/pdf-loader"
-import { PdfShapes } from "@/components/canvas/pdf-shapes"
+import { type PdfApi, PdfShapes } from "@/components/canvas/pdf-shapes"
 import { Skeleton } from "@/components/ui/skeleton"
 
 type CanvasState =
   | { status: "empty" }
   | { status: "loading" }
-  | { status: "loaded"; bytes: Uint8Array }
+  | { status: "loaded"; bytes: Uint8Array; filename: string }
   | { status: "error"; message: string }
 
 export function CanvasHost() {
   const [state, setState] = useState<CanvasState>({ status: "empty" })
+  const [pdfApi, setPdfApi] = useState<PdfApi | null>(null)
 
-  function handleFile(bytes: Uint8Array) {
-    setState({ status: "loaded", bytes })
+  function handleFile(bytes: Uint8Array, filename: string) {
+    setPdfApi(null)
+    setState({ status: "loaded", bytes, filename })
   }
 
   async function handleExample() {
+    setPdfApi(null)
     setState({ status: "loading" })
     try {
       const res = await fetch("/sample.pdf")
       if (!res.ok) throw new Error(`fetch failed: ${res.status}`)
       const buf = await res.arrayBuffer()
-      setState({ status: "loaded", bytes: new Uint8Array(buf) })
+      setState({
+        status: "loaded",
+        bytes: new Uint8Array(buf),
+        filename: "sample.pdf",
+      })
     } catch (err) {
       setState({
         status: "error",
@@ -63,8 +71,14 @@ export function CanvasHost() {
   }
 
   return (
-    <Canvas>
-      <PdfShapes bytes={state.bytes} onError={handleError} />
-    </Canvas>
+    <ExportPdfProvider filename={state.filename} pdfApi={pdfApi}>
+      <Canvas>
+        <PdfShapes
+          bytes={state.bytes}
+          onError={handleError}
+          onReady={setPdfApi}
+        />
+      </Canvas>
+    </ExportPdfProvider>
   )
 }

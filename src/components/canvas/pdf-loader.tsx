@@ -4,7 +4,7 @@ import { useRef } from "react"
 import { Button } from "@/components/ui/button"
 
 interface PdfLoaderProps {
-  onFile: (bytes: Uint8Array) => void
+  onFile: (bytes: Uint8Array, filename: string) => void
   onExample: () => void
   onError: (message: string) => void
   error?: string
@@ -24,7 +24,7 @@ export function PdfLoader({
     e.target.value = ""
     try {
       const buf = await file.arrayBuffer()
-      onFile(new Uint8Array(buf))
+      onFile(new Uint8Array(buf), file.name)
     } catch (err) {
       onError(err instanceof Error ? err.message : "Failed to read file.")
     }
