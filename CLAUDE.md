@@ -18,13 +18,13 @@ Package manager is **pnpm** (see `pnpm-lock.yaml`).
 
 This is a Next.js 16 App Router template wired to shadcn/ui. It is intentionally minimal — most of the "architecture" is the conventions baked into the tooling config, not custom code.
 
-- **Next.js 16 + React 19**, App Router under `src/app/`. `src/app/layout.tsx` is the root layout and wraps everything in `ThemeProvider`. Dev uses Turbopack.
+- **Next.js 16 + React 19**, App Router under `src/app/`. `src/app/layout.tsx` is the root layout. Dev uses Turbopack.
 - **Tailwind CSS v4** via `@tailwindcss/postcss` (see `postcss.config.mjs`). There is **no `tailwind.config.*`** — theme tokens and `@theme` live in `src/app/globals.css`, which is also what `components.json` points at.
 - **shadcn/ui** is configured in `components.json`: style `radix-nova`, RSC on, RTL on, icon library `lucide`, base color `neutral`. Add new components with `pnpm dlx shadcn@latest add <name>`; they land in `src/components/ui/`. (The README shows `npx` and an old path — ignore it.)
 - **Radix primitives** are imported from the single `radix-ui` package (e.g. `import { Slot } from "radix-ui"`), not `@radix-ui/*` sub-packages. Follow this when adding components.
 - **Path aliases** (from `tsconfig.json` + `components.json`): `@/*` → `src/`. Canonical aliases are `@/components`, `@/components/ui`, `@/lib`, `@/lib/utils`, `@/hooks`.
 - **Styling helper**: `cn()` in `src/lib/utils.ts` composes `clsx` + `tailwind-merge`. Variants use `class-variance-authority` (`cva`).
-- **Theming**: `src/components/theme-provider.tsx` wraps `next-themes` (attribute=`class`, default=`system`). `src/components/theme-toggle.tsx` is a shadcn Sun/Moon icon button mounted top-right by `canvas-host.tsx`; a `ColorSchemeBridge` inside `editor.tsx` mirrors the resolved theme onto tldraw's `user.colorScheme` pref so canvas chrome matches app chrome.
+- **Theming**: light mode only. No `next-themes`, no `.dark` token block.
 
 ## Code style
 

@@ -5,7 +5,6 @@ import Canvas from "@/components/canvas/editor"
 import { ExportPdfProvider } from "@/components/canvas/export-pdf-button"
 import { PdfLoader } from "@/components/canvas/pdf-loader"
 import { type PdfApi, PdfShapes } from "@/components/canvas/pdf-shapes"
-import { ThemeToggle } from "@/components/theme-toggle"
 import { Skeleton } from "@/components/ui/skeleton"
 
 type CanvasState =
@@ -47,20 +46,9 @@ export function CanvasHost() {
     setState({ status: "error", message })
   }
 
-  // Floating toggle used for empty/loading states where there's no canvas
-  // chrome to host it. In the loaded state the ThemeToggle lives inside
-  // tldraw's SharePanel (see editor.tsx) alongside the Export PDF button, so
-  // we don't render this one there to avoid a duplicate top-right button.
-  const floatingThemeToggle = (
-    <div className="fixed right-3 top-3 z-50">
-      <ThemeToggle />
-    </div>
-  )
-
   if (state.status === "empty" || state.status === "error") {
     return (
       <main>
-        {floatingThemeToggle}
         <PdfLoader
           onFile={handleFile}
           onExample={handleExample}
@@ -74,7 +62,6 @@ export function CanvasHost() {
   if (state.status === "loading") {
     return (
       <main className="flex min-h-svh items-center justify-center">
-        {floatingThemeToggle}
         <div
           role="status"
           aria-live="polite"
