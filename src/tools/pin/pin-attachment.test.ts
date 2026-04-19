@@ -142,6 +142,31 @@ describe("computePinUpdates", () => {
     expect(updates).toEqual([])
   })
 
+  // MATT-146: models the drag-session-snapshot output of buildPinGroups. When
+  // a shape slides into a pin area mid-drag, buildPinGroups filters it out of
+  // membersNow based on its drag-start bounds (which didn't contain the tip).
+  // Even though the shape's *current* bounds enclose the tip, computePinUpdates
+  // must not propagate — group-move should wait for the next drag.
+  it("drops propagation for a shape whose drag-start membership excludes it", () => {
+    const slidingIn: ShapeLookup = { id: id("c"), type: "geo", x: 0, y: 0 }
+    const preExisting: Group = {
+      pin: { id: id("pin1"), x: 0, y: 0 },
+      // `membersNow` reflects buildPinGroups' filtered output: the pre-drag
+      // members X and Y, NOT the sliding-in C.
+      membersNow: [id("x"), id("y")],
+    }
+
+    const updates = computePinUpdates(
+      slidingIn.id,
+      10,
+      10,
+      [preExisting],
+      lookupFor([slidingIn])
+    )
+
+    expect(updates).toEqual([])
+  })
+
   it("preserves each shape's type in the emitted move for round-tripping", () => {
     const a: ShapeLookup = { id: id("a"), type: "geo", x: 0, y: 0 }
     const b: ShapeLookup = { id: id("b"), type: "image", x: 0, y: 0 }
