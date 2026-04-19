@@ -1,7 +1,7 @@
 "use client"
 
 import { useEffect } from "react"
-import type { Editor, TLShape, TLShapeId } from "tldraw"
+import { type Editor, react, type TLShape, type TLShapeId } from "tldraw"
 import {
   findShapesUnderPinTip,
   PIN_HIT_MARGIN,
@@ -139,11 +139,13 @@ function arrowBoundToSibling(
   return false
 }
 
-// Every pin on the current page → the shapes currently under its tip. The
-// caller hands in the moved shape's prev bounds so we can re-add it to any
-// group whose tip sat inside the pre-move geometry (the shape may have slid
-// out from under the tip by the time we query current bounds).
-function buildPinGroups(
+// Dynamic-membership build. Used OUTSIDE a select.translating gesture —
+// programmatic updateShapes, keyboard nudges, undo/redo. Membership is
+// re-evaluated on every tick from current geometry. The caller hands in the
+// moved shape's prev-tick bounds so we can re-add it to a group whose tip
+// sat inside the pre-move geometry (the shape may have slid out from under
+// the tip by the time we query current bounds).
+function buildPinGroupsDynamic(
   editor: Editor,
   movedId: TLShapeId,
   prevBounds: PinBounds | undefined
@@ -168,6 +170,27 @@ function buildPinGroups(
   return groups
 }
 
+// Snapshot-driven build. Used DURING a select.translating gesture so
+// membership is frozen at drag start: a shape that slides INTO a pin area
+// isn't picked up mid-drag (MATT-146), and a pre-drag member stays a member
+// no matter how far the group has translated. Pre-drag members propagate
+// forever-in-lockstep; non-members can't gatecrash.
+function buildPinGroupsFromSnapshot(
+  editor: Editor,
+  preDragMembersByPin: ReadonlyMap<TLShapeId, ReadonlySet<TLShapeId>>
+): PinGroupInput[] {
+  const groups: PinGroupInput[] = []
+  for (const shape of editor.getCurrentPageShapes()) {
+    if (shape.type !== "pin") continue
+    const snap = preDragMembersByPin.get(shape.id)
+    groups.push({
+      pin: { id: shape.id, x: shape.x, y: shape.y },
+      membersNow: snap ? Array.from(snap) : [],
+    })
+  }
+  return groups
+}
+
 export function usePinAttachment(editor: Editor | null) {
   useEffect(() => {
     if (!editor) return
@@ -177,6 +200,45 @@ export function usePinAttachment(editor: Editor | null) {
     // be re-evaluated and trigger recursive cascades — tracking each
     // propagated ID lets us consume the token exactly at afterChange time.
     const propagatedIds = new Set<TLShapeId>()
+
+    // Pre-drag pin membership snapshot: pin.id → set of shape IDs that sat
+    // under its tip when the current select.translating gesture began. We
+    // lock membership to this snapshot for the whole gesture so:
+    //   (a) a shape sliding INTO a pin area mid-drag is NOT treated as an
+    //       instant group member (MATT-146);
+    //   (b) a pre-drag member stays a member however far the group has
+    //       translated — comparing current bounds/tips asymmetrically lets
+    //       members drop out when the group moves far enough that the
+    //       snapshot bounds no longer contain the current tip.
+    // Cleared on translating exit so the next drag re-evaluates membership
+    // from the new rest state (and picks up shapes that joined last drag).
+    const preDragPinMembers = new Map<TLShapeId, Set<TLShapeId>>()
+    let wasTranslating = false
+
+    // `react` tracks atoms read inside the callback; after the first
+    // snapshot we early-return on subsequent runs so only the
+    // `isIn("select.translating")` atom is re-tracked — shape-motion
+    // changes don't keep re-firing the effect.
+    const disposeReact = react("pin-translate-session", () => {
+      const isTranslating = editor.isIn("select.translating")
+      if (!isTranslating) {
+        if (wasTranslating) preDragPinMembers.clear()
+        wasTranslating = false
+        return
+      }
+      if (wasTranslating) return
+      wasTranslating = true
+      // At this moment (transition from idle → translating) no shape has
+      // moved yet, so findShapesUnderPinTip reads pre-drag geometry.
+      for (const shape of editor.getCurrentPageShapes()) {
+        if (shape.type !== "pin") continue
+        const tip = pinTipPoint(shape)
+        preDragPinMembers.set(
+          shape.id,
+          new Set(findShapesUnderPinTip(editor, tip))
+        )
+      }
+    })
 
     // Seed the bounds cache so fallback deltas work on the first drag after
     // mount (esp. for arrow/line body drags where x/y doesn't change).
@@ -232,7 +294,15 @@ export function usePinAttachment(editor: Editor | null) {
         const delta = readTranslateDelta(prev, next, prevBounds, nextBounds)
         if (!delta) return
 
-        const groups = buildPinGroups(editor, next.id, prevBounds)
+        // During a translate gesture, membership is locked to the drag-start
+        // snapshot so a sliding-in shape can't gatecrash the group and a
+        // pre-drag member can't drop out as the group moves. Outside the
+        // gesture (programmatic updates, nudges) we stay on the dynamic
+        // model — those are single-tick updates where re-evaluating on each
+        // tick gives the right answer.
+        const groups = editor.isIn("select.translating")
+          ? buildPinGroupsFromSnapshot(editor, preDragPinMembers)
+          : buildPinGroupsDynamic(editor, next.id, prevBounds)
         if (groups.length === 0) return
 
         const updates = computePinUpdates(
@@ -278,11 +348,36 @@ export function usePinAttachment(editor: Editor | null) {
       "shape",
       (deleted) => {
         lastBoundsByShape.delete(deleted.id)
+        preDragPinMembers.delete(deleted.id)
+        for (const memberSet of preDragPinMembers.values()) {
+          memberSet.delete(deleted.id)
+        }
+      }
+    )
+
+    // Seed the cache on creation too — afterChange only fires on updates, so
+    // shapes created after mount have no prev bounds on their first drag,
+    // which would leave buildPinGroups without the pre-drag geometry it
+    // needs to decide membership of the moved shape.
+    const disposeCreate = editor.sideEffects.registerAfterCreateHandler(
+      "shape",
+      (shape) => {
+        const b = editor.getShapePageBounds(shape.id)
+        if (b) {
+          lastBoundsByShape.set(shape.id, {
+            x: b.x,
+            y: b.y,
+            w: b.w,
+            h: b.h,
+          })
+        }
       }
     )
 
     return () => {
+      disposeReact()
       disposeChange()
+      disposeCreate()
       disposeDelete()
     }
   }, [editor])

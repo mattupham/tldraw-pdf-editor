@@ -142,6 +142,60 @@ describe("computePinUpdates", () => {
     expect(updates).toEqual([])
   })
 
+  // MATT-146 (sliding-in): models the output of buildPinGroupsFromSnapshot
+  // for a shape that wasn't a pin member when the drag began. The snapshot
+  // freezes membership at drag start, so C is absent from membersNow even
+  // though its current bounds may now cover the pin tip — propagation must
+  // not fire. The next drag (after pointer-up, snapshot re-taken) will see
+  // C as a member and move the whole group.
+  it("drops propagation for a shape whose drag-start membership excludes it", () => {
+    const slidingIn: ShapeLookup = { id: id("c"), type: "geo", x: 0, y: 0 }
+    const preExisting: Group = {
+      pin: { id: id("pin1"), x: 0, y: 0 },
+      membersNow: [id("x"), id("y")],
+    }
+
+    const updates = computePinUpdates(
+      slidingIn.id,
+      10,
+      10,
+      [preExisting],
+      lookupFor([slidingIn])
+    )
+
+    expect(updates).toEqual([])
+  })
+
+  // MATT-146 (staying-a-member): models the output of
+  // buildPinGroupsFromSnapshot for a pre-drag member dragged any distance.
+  // The snapshot keeps A in membersNow for the whole gesture, so
+  // computePinUpdates continues to propagate to the pin + siblings no
+  // matter how far the group has translated.
+  it("keeps propagating to a pre-drag member across a long drag", () => {
+    const a: ShapeLookup = { id: id("a"), type: "geo", x: 500, y: 500 }
+    const b: ShapeLookup = { id: id("b"), type: "geo", x: 550, y: 550 }
+    const group: Group = {
+      // Snapshot taken at drag start when A, B sat under the pin tip.
+      pin: { id: id("pin1"), x: 510, y: 510 },
+      membersNow: [a.id, b.id],
+    }
+
+    const updates = computePinUpdates(
+      a.id,
+      300,
+      200,
+      [group],
+      lookupFor([a, b])
+    )
+
+    expect(updates).toHaveLength(2)
+    expect(xy(updates.find((u) => u.id === group.pin.id))).toEqual({
+      x: 810,
+      y: 710,
+    })
+    expect(xy(updates.find((u) => u.id === b.id))).toEqual({ x: 850, y: 750 })
+  })
+
   it("preserves each shape's type in the emitted move for round-tripping", () => {
     const a: ShapeLookup = { id: id("a"), type: "geo", x: 0, y: 0 }
     const b: ShapeLookup = { id: id("b"), type: "image", x: 0, y: 0 }
