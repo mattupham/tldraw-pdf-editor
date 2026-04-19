@@ -3,8 +3,9 @@
 import { Loader2 } from "lucide-react"
 import { createContext, type ReactNode, useContext, useState } from "react"
 import { toast } from "sonner"
+import { useValue } from "tldraw"
 import { useEditor } from "@/components/canvas/editor"
-import type { PdfApi } from "@/components/canvas/pdf-shapes"
+import { PDF_PAGE_META_KEY, type PdfApi } from "@/components/canvas/pdf-shapes"
 import { Button } from "@/components/ui/button"
 import { exportAnnotatedPdf } from "@/lib/pdf/export"
 
@@ -36,10 +37,22 @@ export function ExportPdfButton() {
   const ctx = useContext(ExportPdfContext)
   const editor = useEditor()
   const [isExporting, setIsExporting] = useState(false)
+  // Reactively track whether any PDF-page shape exists on the current page, so
+  // the button stays disabled while the initial batch is still being created
+  // (or if no pages ever made it onto the canvas).
+  const hasPdfPage = useValue("hasPdfPage", () => {
+    if (!editor) return false
+    return editor
+      .getCurrentPageShapes()
+      .some(
+        (s) =>
+          s.type === "image" && typeof s.meta[PDF_PAGE_META_KEY] === "number"
+      )
+  }, [editor])
 
   if (!ctx) return null
   const { filename, pdfApi } = ctx
-  const disabled = !editor || !pdfApi || isExporting
+  const disabled = !editor || !pdfApi || !hasPdfPage || isExporting
 
   async function handleClick() {
     if (!editor || !pdfApi) return
