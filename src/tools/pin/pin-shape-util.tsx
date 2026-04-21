@@ -7,9 +7,6 @@ import {
 } from "tldraw"
 import { PinShape } from "@/tools/pin/pin-shape"
 
-// Attached shapes are now expressed as "pin" bindings (see pin-binding-util.ts),
-// so the shape itself carries no props. Keeping the shape record empty lets
-// tldraw's binding system own the relationship and its delete cascade.
 export type TLPinShapeProps = Record<string, never>
 
 export type TLPinShape = TLBaseShape<"pin", TLPinShapeProps>

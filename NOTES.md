@@ -8,7 +8,7 @@ Per-task log of what I chose, what I rejected, and why. The [SPEC](./SPEC.md) ha
 
 The SPEC §9 flagged three ambiguities that needed an explicit call. The answers below are reflected in tests and video walkthrough.
 
-1. **Orphan pins when the attached set drops below 2 → delete the pin.** Keeping them would need a "ghost" visual to communicate they've lost their grouping, which is extra surface for no functional gain. Implemented in `use-pin-attachment.ts` via the `registerAfterDeleteHandler` path.
+1. **Orphan pins → not a state that needs resolving.** Pin membership is dynamic, not stored on the pin record (props are `Record<string, never>`). A pin with nothing under its tip is a valid decorative state — drop a shape under it later and it automatically rejoins a group on the next drag. The `registerAfterDeleteHandler` only cleans the bounds cache + drag-start snapshot; pin records themselves are never culled.
 2. **Pin on 3+ overlapping shapes → attach all of them.** "Only the top two" is surprising when the user can see three shapes under the pin; "all" is the more useful default and the spec says 2+ as a minimum case, not a maximum.
 3. **Crop region export → include PDF raster shapes.** The crop takes a screenshot; whatever's inside the rectangle goes in. Filtering PDF pages out of `getShapeIdsInsideBounds` would violate least-surprise.
 
@@ -26,6 +26,8 @@ The SPEC §9 flagged three ambiguities that needed an explicit call. The answers
 
 **Error handling.** `PdfShapes` previously let pdf.js rejections escape as unhandled promise rejections. Wrapped `init()` in try/catch; errors surface via the `onError` prop back to `CanvasHost`, which flips to the existing `"error"` state and shows the friendly `PdfLoader` error UI.
 
+**PDF pages are locked (`isLocked: true`).** Each page image is created with `isLocked: true` in `createPageShape`. Two effects: (1) users can't drag the backdrop out from under their annotations — the PDF acts as a fixed substrate; (2) tldraw's eraser and delete actions respect the lock, so pages can't be accidentally removed while cleaning up notes. Pin propagation is additionally decoupled from PDF pages by filtering them out of `findShapesUnderPinTip` — the lock is the UI-level defence, the filter is the semantic one.
+
 ---
 
 ## Task 2 — Export PDF
@@ -42,25 +44,33 @@ The SPEC §9 flagged three ambiguities that needed an explicit call. The answers
 
 **Filename.** `<original>-annotated.pdf`. Preserves the source name so users recognise the export. Sample defaults to `sample-annotated.pdf`.
 
+**Export button disabled while no PDF pages exist.** `export-pdf-button.tsx` reactively watches the current page for shapes with `meta[PDF_PAGE_META_KEY]` and disables the button when none are present. Before a PDF is loaded there's nothing to export; a disabled state gives honest UI feedback instead of a click-into-void followed by an empty-file toast. The button stays disabled through the initial-batch render too — shapes only land in the store once their page finishes rasterising, so the button enables the moment page 1 is in.
+
 ---
 
 ## Task 3 — Pin tool
 
 **Pin icon: 📍 emoji, not lucide `MapPin`.** The shape and the toolbar button both render the emoji directly. tldraw's default icon pipeline renders toolbar icons via CSS `mask-image`, which strips the emoji's red/gold and falls back to a monochrome silhouette. The toolbar button is therefore a `TldrawUiButton` with text children rather than `TldrawUiMenuItem`. The emoji is platform-specific (Apple's pushpin differs from Microsoft's) but is recognisable as a pushpin everywhere, tracks OS font updates automatically, and needs zero SVG asset shipping. Exported via a `toSvg()` override emitting an SVG `<text>` node, so Export PDF and camera crop capture the pin correctly.
 
+**Dynamic membership, no stored attached set.** Pin props are `Record<string, never>` — the shape carries no `attachedShapeIds`. Instead, `use-pin-attachment.ts` answers "who's under this pin's tip right now?" on every afterChange tick via `findShapesUnderPinTip`. Why: dropping a 3rd shape onto an existing pin joins the group automatically, with no prop-sync burden on shape create/delete/move. Trade-off: O(n) shape walk per change — fine at the 10–100-shape scale this exercise targets. A pin record with no shapes under its tip is a valid decorative state (see [Open questions](#open-questions-resolved)).
+
+**Drag-start snapshot lock (MATT-146).** Inside a `select.translating` gesture, membership is frozen to a snapshot taken when the drag began (`preDragPinMembers: Map<PinId, Set<ShapeId>>`). Without the lock, a shape sliding INTO a pin zone mid-drag would be treated as an instant group member — the user would drag a new element across a pin and feel it get yanked into the group mid-motion. The workaround shipped in commit 4e52017's lineage is what lets the user release the new shape first and then pick it up again, now as part of the group. Outside the gesture (keyboard nudges, programmatic moves, undo/redo) membership is re-evaluated dynamically — single-tick updates don't have the mid-drag ambiguity. The distinction is one branch in the afterChange handler (`editor.isIn("select.translating")`).
+
 **Side-effects over React effects.** Attachment propagation is wired via `editor.sideEffects.registerAfterChangeHandler('shape', ...)` inside a `useEffect`. `sideEffects` survive undo/redo cleanly, don't re-run on React render cycles, and run inside tldraw's atomic flush so the propagation is one history entry.
 
-**Per-editor propagation guard.** A `Set<TLShapeId>` scoped to the effect closure tracks which shapes we've already propagated during an atomic flush. A plain boolean isn't enough: tldraw's `flushAtomicCallbacks` while-loop resets handler context between rounds, so shape B's afterChange fires in the next iteration with the boolean already cleared and triggers another cascade. Tracking each propagated ID explicitly lets us skip exactly those shapes.
+**Per-flush propagation guard (`propagatedIds` Set).** tldraw's `flushAtomicCallbacks` while-loop drains pending events across several iterations, so a plain boolean would be cleared between rounds and re-trigger the cascade. Tracking each propagated ID explicitly — and *not* sweeping the set after `editor.run(...)` returns — keeps the guard token alive for handlers that fire in a later flush iteration.
 
-**Resize guard.** The afterChange handler skips propagation when `props.w` or `props.h` changed. Dragging a top/left resize handle also updates `x`/`y`, and without the guard it would be indistinguishable from a translate — the corner delta would drag every attached shape along.
+**Resize guard + bounds-fallback delta (`readTranslateDelta`).** Returns `null` when `props.w` or `props.h` changed, so top/left resize handles don't drag siblings along. When x/y are unchanged but bounds moved (arrow/line body drags leave `shape.x` alone — their geometry lives inside `props`), falls back to a prev/next `getShapePageBounds` delta so arrow drags still propagate to grouped siblings. A bounds cache (`lastBoundsByShape`) seeded on create + maintained on change keeps the prev-bounds lookup O(1).
 
-**Attach all overlapping shapes.** `getShapesAtPoint(point, { hitInside: true })` returns every non-pin shape under the pointer; all of them go into `attachedShapeIds`. See [Open questions](#open-questions-resolved).
+**Gesture gating: only propagate under the select tool.** Drag-to-draw from a non-select tool (ellipse, rectangle, draw) updates `x`/`y` tick-by-tick as the user defines the shape without `w`/`h` changing; without a guard, `readTranslateDelta` would read that as a translate and drag an overlapping pin group along with the still-being-drawn shape. The handler early-returns unless `getCurrentToolId() === "select"`. Broader than `isIn("select.translating")` on purpose — keyboard nudges, undo/redo, and programmatic `updateShapes` all run under the select tool and must still propagate.
 
-**`hitInside: true` side-effect: pins attach to the PDF page.** Because PDF pages are rendered as tldraw image shapes, `getShapesAtPoint({ hitInside: true })` returns them alongside user-drawn shapes — so every in-bounds pin drop attaches to at least the page image. Matches the "pin on empty canvas" behaviour shown in the spec video (a lone pin sitting on the PDF) and doesn't cause drag issues since PDF pages aren't draggable in practice (they're locked and filter out of the afterChange drag path).
+**Arrow double-move guard (`arrowBoundToSibling`).** tldraw's native arrow bindings already carry an arrow along when its bound target translates. If we also apply our delta to that arrow, it overshoots by 2×. The guard filters arrows out of the update batch when a `getBindingsFromShape` target is another sibling we're about to move in the same run.
 
-**Orphaned pins deleted via `registerAfterDeleteHandler`.** When an attached shape is deleted, the handler walks every pin whose `attachedShapeIds` contains that ID, removes it, and deletes any pin whose set drops below 2. See [Open questions](#open-questions-resolved).
+**Attach all overlapping shapes.** `findShapesUnderPinTip` returns every non-pin, non-PDF shape whose bounds contain the pin's tip (expanded by `PIN_HIT_MARGIN = 6`). All of them become the group for the duration of the drag. See [Open questions](#open-questions-resolved).
 
-**`snapshotPins` is O(n) per change.** Walks every shape on the page on every afterChange tick — fine for decks of a few dozen shapes. A pin index via `editor.store.listen` filtered to pin records would scale better if this grew; not worth the complexity at current scale.
+**PDF pages are filtered out of the pin candidate list.** `isPdfPageShape` (type `image` with `meta[PDF_PAGE_META_KEY]`) is skipped inside `findShapesUnderPinTip` — otherwise every in-bounds pin drop would silently group with the backdrop and drag the page image around. The PDF pages' `isLocked: true` (see [Task 2 — PDF display](#task-2--pdf-display)) is a second line of defence at the tldraw UI level; this filter keeps the pin group semantically clean.
+
+**Pins stay above newly-created shapes.** An `afterCreateHandler` calls `editor.bringToFront(pinIds)` whenever a non-pin shape is created. tldraw assigns each new shape an index above the current max, so a pin dropped before a later-drawn rectangle would otherwise end up visually behind it. The handler only mutates `index` — bounds/position are untouched, so the afterChange propagation path sees no translate delta and doesn't ripple the group. Freshly placed pins already sit on top (no-op branch).
 
 ---
 
