@@ -9,7 +9,9 @@ Built for the H2 coding exercise. See [`SPEC.md`](./SPEC.md) for the full techni
 
 ## Walkthrough video
 
-> **Link coming — recording in progress.** A short screen recording demonstrating each task end-to-end: opening a PDF, dropping a pin on overlapping shapes, dragging an attached shape, cropping a region with the camera tool, and exporting the annotated PDF.
+[Loom — H2 coding exercise walkthrough](https://www.loom.com/share/64b255fc05f0438ab51e4f459a86d636)
+
+A short screen recording demonstrating each task end-to-end: opening a PDF, dropping a pin on overlapping shapes, dragging an attached shape, cropping a region with the camera tool, and exporting the annotated PDF.
 
 ## Stack
 
@@ -68,7 +70,7 @@ tests/e2e/                # Playwright specs (one per spec task)
 
 Read [`NOTES.md`](./NOTES.md) for the full decision log — trade-offs considered, alternatives rejected, and how the three "open questions" from `SPEC.md` §9 were resolved (pin orphaning, multi-shape overlap, crop scope). Cross-cutting concerns are broken out as their own sections:
 
-- [Accessibility](./NOTES.md#accessibility) — aria-labels, keyboard reach, `prefers-reduced-motion`, dark mode
+- [Accessibility](./NOTES.md#accessibility) — aria-labels, keyboard reach, `prefers-reduced-motion`
 - [Performance](./NOTES.md#performance) — `OffscreenCanvas`, DPR cap, lazy layout, custom `TLAssetStore`, export concurrency
 - [Security](./NOTES.md#security) — per-request CSP nonce, pdfjs hardening, E2E hook gating
 - [Testing strategy](./NOTES.md#testing-strategy) — Vitest unit + Playwright E2E coverage map
