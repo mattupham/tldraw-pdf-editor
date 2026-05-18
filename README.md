@@ -9,7 +9,7 @@ Built for the H2 coding exercise. See [`SPEC.md`](./SPEC.md) for the full techni
 
 ## Walkthrough video
 
-[Loom — H2 coding exercise walkthrough](https://www.loom.com/share/64b255fc05f0438ab51e4f459a86d636)
+[Loom — TLDraw PDF Annotator walkthrough](https://www.loom.com/share/64b255fc05f0438ab51e4f459a86d636)
 
 A short screen recording demonstrating each task end-to-end: opening a PDF, dropping a pin on overlapping shapes, dragging an attached shape, cropping a region with the camera tool, and exporting the annotated PDF.
 
