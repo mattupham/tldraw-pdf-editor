@@ -1,4 +1,4 @@
-# H2 Frontend
+# PDF Annotator
 
 A tldraw-powered canvas that loads a PDF as its backdrop and exposes two custom tools:
 
